@@ -1,9 +1,10 @@
 """ETL pipeline graph that connects and runs a sequence of nodes.
 
-A :class:`Graph` holds an ordered collection of :class:`~yieldgraph.node.Node`
-objects connected by :class:`~yieldgraph.edge.Edge` queues.  Calling
-:meth:`Graph.run` (or the graph itself) drives each node in order: outputs of
-one node are automatically routed to the inputs of the next.
+A :class:`Graph` holds an ordered collection of
+:class:`~yieldgraph.node.Node` objects connected by
+:class:`~yieldgraph.edge.Edge` queues. Calling :meth:`Graph.run` 
+(or the graph itself) drives each node in order: outputs of one node are
+automatically routed to the inputs of the next.
 
 Multiple independent chains can be attached to the same graph to create
 fan-out or parallel branches.
@@ -28,6 +29,9 @@ print(g.output)   # → [(2,), (4,), (6,)]
 ```
 """
 
+import os
+import threading
+
 from collections import defaultdict
 
 from typing import Any
@@ -40,17 +44,19 @@ from typing import Tuple
 from .config import LOG
 from .config import LoggingBehavior
 from .config import START_NODE_NAME
+from .config import THREADED_ENV_VAR
 from .edge import Edge
 from .node import Node
 
 
 class Graph(LoggingBehavior):
-    """Directed graph of :class:`~yieldgraph.node.Node` objects forming an
-    ETL pipeline.
+    """Directed graph of :class:`~yieldgraph.node.Node` objects forming 
+    an ETL pipeline.
 
-    Nodes are added via :meth:`add_chain` and executed in insertion order by
-    :meth:`run`.  The graph manages all :class:`~yieldgraph.edge.Edge` queues
-    between nodes and exposes the final outputs through :attr:`output`.
+    Nodes are added via :meth:`add_chain` and executed in insertion
+    order by :meth:`run`.  The graph manages all 
+    :class:`~yieldgraph.edge.Edge` queues between nodes and exposes the
+    final outputs through :attr:`output`.
 
     Attributes
     ----------
@@ -58,9 +64,11 @@ class Graph(LoggingBehavior):
         Ordered mapping of node name → :class:`~yieldgraph.node.Node`.
     edges : defaultdict[str, list[Edge]]
         All edge queues keyed by the name of the *source* node (or
-        :data:`~yieldgraph.config.START_NODE_NAME` for the pipeline entry).
+        :data:`~yieldgraph.config.START_NODE_NAME` for the pipeline 
+        entry).
     terminal_nodes : list[str]
-        Names of the last node in each chain; their edges feed :attr:`output`.
+        Names of the last node in each chain; their edges feed 
+        :attr:`output`.
     cancelled : bool
         Set to ``True`` to request cancellation of a running pipeline.
         Also set automatically on :exc:`KeyboardInterrupt`.
@@ -89,13 +97,16 @@ class Graph(LoggingBehavior):
     terminal_nodes: List[str]
     """Names of the last node in each chain.
 
-    Their outgoing edges are collected into :attr:`output` after the run."""
+    Their outgoing edges are collected into :attr:`output` after the
+    run."""
 
     cancelled: bool
-    """Set to ``True`` to request early termination of a running pipeline.
+    """Set to ``True`` to request early termination of a running
+    pipeline.
 
     Checked by each node before and after every yielded value.  Also set
-    automatically when a :exc:`KeyboardInterrupt` is raised inside a node."""
+    automatically when a :exc:`KeyboardInterrupt` is raised inside a
+    node."""
 
     finished: bool
     """``True`` once :meth:`run` has returned, regardless of outcome."""
@@ -109,20 +120,33 @@ class Graph(LoggingBehavior):
     labels: Dict[str, str]
     """Optional display labels keyed by node name.
 
-    Used by :attr:`step` and :meth:`_node_label` to produce human-readable
-    step names for progress displays.  If a node name is absent the label is
-    derived automatically by uppercasing each ``_``-separated token."""
+    Used by :attr:`step` and :meth:`_node_label` to produce
+    human-readable step names for progress displays.  If a node name is
+    absent the label is derived automatically by uppercasing each 
+    ``_``-separated token."""
 
     # --- private state ------------------------------------------------
 
     _output: List[Tuple[Any, ...]]
-    """Cached flat list of all outputs collected from :attr:`terminal_nodes`."""
+    """Cached flat list of all outputs collected from 
+    :attr:`terminal_nodes`."""
 
     _current_node_name: str
     """Name of the node currently being processed by :meth:`run`."""
 
     _node_index: int
     """1-based index of the node currently being processed."""
+
+    _threaded: bool
+    """``True`` when the graph runs nodes as concurrent threads.
+
+    Set automatically from the
+    :data:`~yieldgraph.config.THREADED_ENV_VAR` environment variable at
+    the start of each :meth:`run`. Override by setting the variable
+    before the run::
+
+        YIELDGRAPH_THREADED=1 python my_pipeline.py
+    """
 
     # ------------------------------------------------------------------
     # Construction
@@ -135,6 +159,7 @@ class Graph(LoggingBehavior):
         self._output = []
         self._current_node_name = ''
         self._node_index = 0
+        self._threaded = False
         self.cancelled = False
         self.finished = False
         self.error = ''
@@ -167,10 +192,12 @@ class Graph(LoggingBehavior):
 
     @property
     def output(self) -> List[Tuple[Any, ...]]:
-        """Flat list of all output tuples from the terminal nodes (read-only).
+        """Flat list of all output tuples from the terminal nodes 
+        (read-only).
 
         Collected lazily on first access after :meth:`run` completes.
-        Each item is a tuple that was yielded by the last node of a chain.
+        Each item is a tuple that was yielded by the last node of a 
+        chain.
 
         ```python
         g.run()
@@ -189,8 +216,8 @@ class Graph(LoggingBehavior):
 
     @property
     def at_first_node(self) -> bool:
-        """``True`` when :attr:`current_node` is the very first node added
-        to the graph (read-only)."""
+        """``True`` when :attr:`current_node` is the very first node
+        added to the graph (read-only)."""
         node_names = list(self.nodes.keys())
         if not node_names:
             return False
@@ -198,11 +225,12 @@ class Graph(LoggingBehavior):
 
     @property
     def step(self) -> str:
-        """Human-readable label of the currently executing node (read-only).
+        """Human-readable label of the currently executing node
+        (read-only).
 
-        Returns an empty string when cancelled, ``'ETL Prozess Ende'`` when
-        finished, or the node label during execution.  Intended for progress
-        displays.
+        Returns an empty string when cancelled, ``'ETL Prozess Ende'``
+        when finished, or the node label during execution.  Intended for 
+        progress displays.
         """
         label = self._node_label(self._current_node_name)
         if self.cancelled:
@@ -213,8 +241,8 @@ class Graph(LoggingBehavior):
 
     @property
     def progress(self) -> int:
-        """Progress of the currently executing node as an integer percentage
-        ``[0, 100]`` (read-only)."""
+        """Progress of the currently executing node as an integer
+        percentage ``[0, 100]`` (read-only)."""
         return int(100 * self.current_node.progress)
 
     # ------------------------------------------------------------------
@@ -229,21 +257,21 @@ class Graph(LoggingBehavior):
             attach_to: str = '') -> None:
         """Add an ordered sequence of callables to the graph as a chain.
 
-        Each function's outputs are automatically routed as inputs to the
-        next function in the sequence.  If *attach_to* is given the chain
-        is spliced in as a parallel branch starting from the named node's
-        output edge.
+        Each function's outputs are automatically routed as inputs to
+        the next function in the sequence. If *attach_to* is given the
+        chain is spliced in as a parallel branch starting from the named
+        node's output edge.
 
         Parameters
         ----------
         *job_functions : Callable
             The callables that form the chain, in execution order.
         labels : tuple[str, ...], optional
-            Human-readable display labels for each node, in the same order
-            as *job_functions*.  Defaults to auto-derived labels.
+            Human-readable display labels for each node, in the same 
+            order as *job_functions*.  Defaults to auto-derived labels.
         initial_input : tuple, optional
-            Seed arguments passed to the first node of a *new* chain (i.e.
-            when *attach_to* is not given).  The graph instance is
+            Seed arguments passed to the first node of a *new* chain 
+            (i.e. when *attach_to* is not given). The graph instance is 
             prepended automatically if not already present.
         attach_to : str, optional
             Name of an existing node whose output edge this chain should
@@ -251,9 +279,9 @@ class Graph(LoggingBehavior):
 
         Notes
         -----
-        The first function of a new (non-attached) chain receives the graph
-        instance as its first argument so it can inspect :attr:`output`,
-        react to :attr:`cancelled`, etc.
+        The first function of a new (non-attached) chain receives the
+        graph instance as its first argument so it can inspect
+        :attr:`output`, react to :attr:`cancelled`, etc.
 
         Examples
         --------
@@ -298,20 +326,39 @@ class Graph(LoggingBehavior):
             edge_in = node.name
 
     def run(self) -> None:
-        """Execute all nodes in the graph in insertion order.
+        """Execute all nodes — sequentially or in parallel threads.
 
-        Drains each node's incoming edges, runs its job, and routes outputs
-        to the next node's incoming edges.  Stops early if :attr:`cancelled`
-        is set or a node reports empty inputs.  Sets :attr:`finished` to
-        ``True`` when done regardless of outcome.
+        Reads :data:`~yieldgraph.config.THREADED_ENV_VAR` from the
+        environment to decide the execution mode, then delegates to
+        :meth:`_run_sequential` or :meth:`_run_threaded`.  Sets
+        :attr:`finished` to ``True`` when done regardless of outcome.
 
         Raises
         ------
-        Nothing — exceptions inside nodes are caught and stored in
+        Nothing — node-level exceptions are stored in
         :attr:`~yieldgraph.node.Node.errors`.  Graph-level errors are
         recorded in :attr:`error`.
         """
         self._reset()
+        if self._threaded:
+            self._run_threaded()
+        else:
+            self._run_sequential()
+        self.finished = True
+        self.log(
+            'ETL process done:\n' + '\n'.join(repr(n) for n in self.nodes.values()),
+            LOG.INFO)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _run_sequential(self) -> None:
+        """Execute all nodes one at a time in insertion order.
+
+        Each node fully drains its input edges before the next node 
+        starts. This is the default execution mode.
+        """
         for i, (name, node) in enumerate(self.nodes.items()):
             if self.cancelled:
                 self.error = 'ETL Auftrag abgebrochen'
@@ -331,35 +378,90 @@ class Graph(LoggingBehavior):
             self.edges[node.inputs_from] = node._inputs
             self.edges[name] = node.outputs
 
-        self.finished = True
-        self.log(
-            'ETL process done:\n' + '\n'.join(repr(n) for n in self.nodes.values()),
-            LOG.INFO)
+    def _run_threaded(self) -> None:
+        """Execute all nodes concurrently in daemon threads.
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
+        Each node starts immediately and blocks in
+        :meth:`~yieldgraph.node.Node.process_streaming` until its
+        upstream edge delivers data.  When a node finishes it closes all
+        its output edges, which unblocks the downstream nodes.
+
+        The seed edges (keyed by 
+        :data:`~yieldgraph.config.START_NODE_NAME`) are pre-filled
+        before threads start and are closed immediately so first-chain
+        nodes know when the initial input is exhausted.
+
+        Notes
+        -----
+        Fan-out pipelines with multiple chains attached to the same node
+        work as long as each downstream branch reads from a distinct
+        edge. The graph populates one output edge per attached chain in
+        :meth:`add_chain`; in threaded mode :meth:`_run_threaded` passes
+        each node only the single edge that belongs to it.
+        """
+        # Close pre-filled seed edges so first-chain nodes don't block forever.
+        for edge in self.edges[START_NODE_NAME]:
+            edge.close()
+
+        threads: List[threading.Thread] = []
+
+        for i, (name, node) in enumerate(self.nodes.items()):
+            self._node_index = i + 1
+            node.reset()
+
+            # Determine which single output edge from inputs_from belongs to
+            # this node.  In a linear chain there is exactly one; in a
+            # fan-out chain add_chain appended one per branch.
+            all_in_edges = self.edges[node.inputs_from]
+            # Count how many nodes upstream of this one share the same source.
+            branch_index = sum(
+                1 for n in self.nodes.values()
+                if n.inputs_from == node.inputs_from and list(self.nodes.keys()).index(n.name) < i
+            )
+            edge_index = min(branch_index, len(all_in_edges) - 1)
+            edges_in = [all_in_edges[edge_index]]
+            edges_out = list(self.edges[name])
+
+            def _target(
+                    n: Node = node,
+                    ei: List[Edge] = edges_in,
+                    eo: List[Edge] = edges_out) -> None:
+                n.process_streaming(ei, eo)
+                for edge in eo:
+                    edge.close()
+
+            t = threading.Thread(target=_target, name=name, daemon=True)
+            threads.append(t)
+            self.log(f'Created thread for node {name}', LOG.DEBUG)
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
 
     def _reset(self) -> None:
         """Prepare the graph for a new run.
 
-        Clears cached outputs, resets flags, aligns node column widths for
-        :meth:`~yieldgraph.node.Node.__repr__`, and sets the current node
-        cursor to the first node.
+        Reads :data:`~yieldgraph.config.THREADED_ENV_VAR` to set
+        :attr:`_threaded`, clears cached outputs and flags, aligns node
+        column widths, and sets the current-node cursor.
         """
         self._output = []
         self.finished = False
         self.error = ''
         self.cancelled = False
+        self._threaded = os.environ.get(THREADED_ENV_VAR, '').lower() in ('1', 'true', 'yes')
         self._adjust_col_widths()
         self._current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
-        self.log(f'Run following graph\n{repr(self)}', LOG.INFO)
+        mode = 'threaded' if self._threaded else 'sequential'
+        self.log(f'Run ({mode}) following graph\n{repr(self)}', LOG.INFO)
 
     def _adjust_col_widths(self) -> None:
-        """Align the ``_col_width`` of all nodes to the longest node name.
+        """Align the ``_col_width`` of all nodes to the longest node 
+        name.
 
-        Ensures :meth:`~yieldgraph.node.Node.__repr__` columns line up when
-        the graph summary is logged.
+        Ensures :meth:`~yieldgraph.node.Node.__repr__` columns line up
+        when the graph summary is logged.
         """
         if not self.nodes:
             return

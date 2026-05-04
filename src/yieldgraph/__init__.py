@@ -1,6 +1,7 @@
 from .config import LOG
 from .config import LoggingBehavior
 from .config import START_NODE_NAME
+from .config import THREADED_ENV_VAR
 from .edge import Edge
 from .job import Job
 from .node import Node
@@ -14,4 +15,5 @@ __all__ = [
     'LoggingBehavior',
     'Node',
     'START_NODE_NAME',
+    'THREADED_ENV_VAR',
 ]

@@ -1,11 +1,12 @@
 """Pipeline node that wraps a :class:`~yieldgraph.job.Job` and manages
 its input/output edges inside a :class:`~yieldgraph.graph.Graph`.
 
-Each :class:`Node` pulls items from one or more incoming :class:`~yieldgraph.edge.Edge`
-queues, feeds them one at a time into its :class:`~yieldgraph.job.Job`, and
-fans every yielded result out to all outgoing edges.  Error handling,
-progress tracking, and cancellation are all managed here so that
-:class:`~yieldgraph.graph.Graph` only needs to iterate over nodes in order.
+Each :class:`Node` pulls items from one or more incoming 
+:class:`~yieldgraph.edge.Edge`  ueues, feeds them one at a time into its 
+:class:`~yieldgraph.job.Job`, and fans every yielded result out to all
+outgoing edges.  Error handling, progress tracking, and cancellation are
+all managed here so that :class:`~yieldgraph.graph.Graph` only needs to 
+iterate over nodes in order.
 
 The module-level helper :func:`_ensure_tuple` is kept separate from the
 class so it can be used and tested independently.
@@ -80,10 +81,12 @@ class Node(LoggingBehavior):
     Each :class:`Node` wraps one :class:`~yieldgraph.job.Job` and is
     responsible for:
 
-    - pulling items from its incoming :class:`~yieldgraph.edge.Edge` queues,
+    - pulling items from its incoming :class:`~yieldgraph.edge.Edge` 
+      queues,
     - feeding each item as ``*args`` into the job,
     - fanning every yielded result to all outgoing edges,
-    - tracking counts (``n_consumed``, ``n_produced``) and caught errors,
+    - tracking counts (``n_consumed``, ``n_produced``) and caught
+      errors,
     - cooperating with the owning :class:`~yieldgraph.graph.Graph` on
       cancellation.
 
@@ -96,8 +99,9 @@ class Node(LoggingBehavior):
         The callable that does the actual work.  May be a plain function
         or a generator function.
     inputs_from : str
-        Name of the upstream node (or :data:`~yieldgraph.config.START_NODE_NAME`
-        for the first node) whose edges feed this node.
+        Name of the upstream node (or 
+        :data:`~yieldgraph.config.START_NODE_NAME` for the first node) 
+        whose edges feed this node.
     label : str, optional
         Human-readable display name passed through to the underlying
         :class:`~yieldgraph.job.Job`.
@@ -127,7 +131,8 @@ class Node(LoggingBehavior):
     # --- private state ------------------------------------------------
 
     _graph: Any
-    """Owning :class:`~yieldgraph.graph.Graph`; read for ``cancel`` flag."""
+    """Owning :class:`~yieldgraph.graph.Graph`; read for ``cancel`` 
+    flag."""
 
     _job: Job
     """Wrapped :class:`~yieldgraph.job.Job` instance."""
@@ -145,7 +150,8 @@ class Node(LoggingBehavior):
     """Most recent output tuple produced by the job."""
 
     _processing_first: bool
-    """``True`` while :meth:`_run_one` is handling the first queued item."""
+    """``True`` while :meth:`_run_one` is handling the first queued 
+    item."""
 
     _processing_last: bool
     """``True`` while :meth:`_run_one` is handling the last queued item."""
@@ -162,7 +168,8 @@ class Node(LoggingBehavior):
     """``True`` for the last node of a chain."""
 
     n_queued: int
-    """Total number of input items queued at the start of :meth:`process`."""
+    """Total number of input items queued at the start of 
+    :meth:`process`."""
 
     n_consumed: int
     """Number of input items pulled from the active edge so far."""
@@ -171,7 +178,8 @@ class Node(LoggingBehavior):
     """Number of output tuples pushed to outgoing edges so far."""
 
     errors: List[Exception]
-    """List of exceptions caught during :meth:`_run_one` in the current run."""
+    """List of exceptions caught during :meth:`_run_one` in the current 
+    run."""
 
     outputs: List[Edge]
     """List of outgoing edges."""
@@ -217,7 +225,8 @@ class Node(LoggingBehavior):
 
     @property
     def n_errors(self) -> int:
-        """Number of exceptions caught so far in the current run (read-only)."""
+        """Number of exceptions caught so far in the current run 
+        (read-only)."""
         return len(self.errors)
 
     @property
@@ -247,7 +256,8 @@ class Node(LoggingBehavior):
 
     @property
     def input_count(self) -> int:
-        """Number of items available on the active input edge (read-only)."""
+        """Number of items available on the active input edge 
+        (read-only)."""
         if type(self.inputs) is tuple and self.inputs:
             return 1
         return len(self.inputs)
@@ -268,7 +278,8 @@ class Node(LoggingBehavior):
 
     @property
     def progress(self) -> float:
-        """Fraction of queued items processed, clamped to ``[0.01, 1.0]`` (read-only).
+        """Fraction of queued items processed, clamped to 
+        ``[0.01, 1.0]`` (read-only).
 
         Returns ``0.5`` when :attr:`n_queued` is zero (e.g. a source
         node that generates its own data rather than receiving inputs).
@@ -281,7 +292,8 @@ class Node(LoggingBehavior):
     # ------------------------------------------------------------------
 
     def reset(self) -> None:
-        """Clear all counters, errors, and edge references for a new run.
+        """Clear all counters, errors, and edge references for a new 
+        run.
 
         Called automatically from :meth:`__init__` and by
         :class:`~yieldgraph.graph.Graph` before each run.
@@ -298,7 +310,8 @@ class Node(LoggingBehavior):
         self._processing_last = False
 
     def process(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:
-        """Consume all items from *edges_in* and push results to *edges_out*.
+        """Consume all items from *edges_in* and push results to 
+        *edges_out*.
 
         Iterates over every queued input item and calls :meth:`_run_one`
         for each one.  Sets :attr:`_processing_first` and
@@ -330,8 +343,9 @@ class Node(LoggingBehavior):
         """Run the job for a single input item and collect its outputs.
 
         Unpacks *job_data* as positional arguments into the job generator.
-        Each yielded value is normalised to a tuple via :func:`_ensure_tuple`
-        and pushed to all outgoing edges via :meth:`_fan_out`.
+        Each yielded value is normalised to a tuple via 
+        :func:`_ensure_tuple` and pushed to all outgoing edges via 
+        :meth:`_fan_out`.
 
         Cancellation is checked after every yielded value.  A
         :exc:`KeyboardInterrupt` sets ``graph.cancel`` so all subsequent
@@ -344,19 +358,19 @@ class Node(LoggingBehavior):
             Arguments to unpack into the job callable.
         """
         try:
-            if self._graph.cancel:
+            if self._graph.cancelled:
                 self.log('Skip job because of graph cancel', LOG.TRACE)
                 return
 
             for output in self._job(*job_data):
-                if self._graph.cancel:
+                if self._graph.cancelled:
                     self._job.cancelled = True
                     break
 
                 self._fan_out(_ensure_tuple(output))
 
         except KeyboardInterrupt as e:
-            self._graph.cancel = True
+            self._graph.cancelled = True
             self.log(f'{self} interrupted because: {e}', LOG.INFO)
 
         except Exception as e:
@@ -371,7 +385,14 @@ class Node(LoggingBehavior):
             self.n_consumed += 1
 
     def _fan_out(self, output: Tuple[Any, ...]) -> None:
-        """Append *output* to every outgoing edge and increment :attr:`n_produced`.
+        """Push *output* to every outgoing edge and increment 
+        :attr:`n_produced`.
+
+        Uses :meth:`~yieldgraph.edge.Edge.put` which is thread-safe and
+        wakes up any consumer blocked in
+        :meth:`~yieldgraph.edge.Edge.get`. Works correctly in sequential 
+        mode too (put is equivalent to append plus a no-op notification 
+        when no consumer is waiting).
 
         Parameters
         ----------
@@ -380,9 +401,63 @@ class Node(LoggingBehavior):
         """
         self._last_output = output
         for edge in self.outputs:
-            edge.append(output)
+            edge.put(output)
         self.log(f'Stored output @ node {self}', LOG.TRACE)
         self.n_produced += 1
+
+    def process_streaming(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:
+        """Consume items from *edges_in* using blocking 
+        :meth:`~yieldgraph.edge.Edge.get` calls.
+
+        Used in threaded execution mode where items arrive incrementally
+        from a concurrently-running producer node.  Loops until every 
+        input edge is :attr:`~yieldgraph.edge.Edge.closed` and empty, or 
+        until the owning graph signals cancellation.
+
+        Each input edge is drained fully before the next one is started
+        (same ordering as the sequential :meth:`process`).
+        :attr:`_processing_first` is set for the very first item;
+        :attr:`_processing_last` is always ``False`` because the end of
+        the stream is not known in advance.
+
+        Parameters
+        ----------
+        edges_in : list[Edge]
+            Incoming edge queues to read from (blocking).
+        edges_out : list[Edge]
+            Outgoing edge queues to push results into.
+
+        Notes
+        -----
+        For fan-out pipelines with multiple chains attached to the same
+        node each input edge is consumed by exactly one downstream node
+        in sequential mode (first-non-empty assignment).  In threaded
+        mode the caller (:meth:`~yieldgraph.graph.Graph._run_threaded`)
+        is responsible for passing the correct subset of *edges_in* to
+        each node.
+        """
+        self.inputs = edges_in
+        self.outputs = edges_out
+        self._job.cancelled = False
+        first_item = True
+
+        for edge in edges_in:
+            while True:
+                if self._graph.cancelled:
+                    self._job.cancelled = True
+                    return
+
+                item = edge.get(timeout=0.05)
+
+                if item is None:
+                    if edge.closed:
+                        break        # this edge exhausted — move to next
+                    continue         # timeout — loop back to check cancel
+
+                self._processing_first = first_item
+                self._processing_last = False
+                first_item = False
+                self._run_one(item)
 
     # ------------------------------------------------------------------
     # Dunder methods

@@ -38,13 +38,35 @@ from dataclasses import dataclass
 __all__ = [
     'LOG',
     'LoggingBehavior',
-    'START_NODE_NAME'
+    'START_NODE_NAME',
+    'THREADED_ENV_VAR',
 ]
 
 
 START_NODE_NAME = '__START__'
-"""Constant representing the name of the start node in the graph. This 
-is used as a placeholder for the starting point of the graph."""
+"""Sentinel name for the implicit start node that seeds pipeline chains."""
+
+THREADED_ENV_VAR = 'YIELDGRAPH_THREADED'
+"""Name of the environment variable that enables threaded execution.
+
+Set this variable to ``'1'``, ``'true'``, or ``'yes'`` (case-insensitive)
+before running a :class:`~yieldgraph.graph.Graph` to execute all nodes
+concurrently in separate threads instead of sequentially.
+
+Examples
+--------
+```bash
+YIELDGRAPH_THREADED=1 python my_pipeline.py
+```
+or in Python:
+```python
+import os
+os.environ['YIELDGRAPH_THREADED'] = '1'
+g = Graph()
+g.add_chain(extract, transform, load)
+g.run()
+```
+"""
 
 @dataclass(frozen=True)
 class _Log_:
@@ -157,11 +179,11 @@ class LoggingBehavior:
         Parameters
         ----------
         name : str | int
-            The name or integer of the log level (e.g., 'TRACE', 'DEBUG', 'INFO', 
-            'WARNING', 'ERROR', 'CRITICAL'). If an integer is provided, 
-            it checks if it is a valid log level integer and returns it. 
-            If a string is provided, it looks up the corresponding 
-            integer value.
+            The name or integer of the log level (e.g., 'TRACE', 
+            'DEBUG', 'INFO',  'WARNING', 'ERROR', 'CRITICAL'). If an
+            integer is provided, it checks if it is a valid log level
+            integer and returns it. If a string is provided, it looks up
+            the corresponding integer value.
             
         Returns
         -------
