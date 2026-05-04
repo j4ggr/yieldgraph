@@ -9,8 +9,8 @@ from typing import Tuple
 
 from .config import LOG
 from .config import LoggingBehavior
+from .config import START_NODE_NAME
 from .edge import Edge
-from .node import BEGIN
 from .node import Node
 
 
@@ -189,20 +189,20 @@ class Graph(LoggingBehavior):
         if not input_of:
             if self not in input_first:
                 input_first = (self, ) + input_first
-            self.edges[BEGIN].append(Edge([input_first]))
+            self.edges[START_NODE_NAME].append(Edge([input_first]))
             self.log(f'Input first = {input_first}', LOG.DEBUG)
-        
-        edge_in = input_of if input_of else BEGIN
+
+        edge_in = input_of if input_of else START_NODE_NAME
         if not designations:
             designations = tuple('' for _ in job_functions)
-        for i, (fun, desig) in enumerate(zip(job_functions, designations)):
+        for i, (fun, label) in enumerate(zip(job_functions, designations)):
             node = Node(
-                graph=self, 
+                graph=self,
                 job_function=fun,
                 inputs_from=edge_in,
-                designation=desig,
-                first=(i==0),
-                last=(i==n_nodes-1))
+                label=label,
+                first=(i == 0),
+                last=(i == n_nodes - 1))
             self.nodes[node.name] = node
             if edge_in == input_of:
                 self.edges[input_of].append(Edge())
@@ -223,7 +223,7 @@ class Graph(LoggingBehavior):
             
             self.node_counter = i+1
             edges_in = self.edges[node.inputs_from]
-            if not any(edges_in) and not node.inputs_from == BEGIN:
+            if not any(edges_in) and not node.inputs_from == START_NODE_NAME:
                 self.error_msg = f'Keine Eingangsdaten für Knoten: {node.name}'
                 self.log(f'No inputs for {name}, inputs = \n{edges_in}', LOG.ERROR)
                 break
@@ -258,7 +258,7 @@ class Graph(LoggingBehavior):
         e = ' -> '
         s = f'START'
         for name, node in self.nodes.items():
-            if node.first and node.inputs_from != BEGIN:
+            if node.first and node.inputs_from != START_NODE_NAME:
                 s += f'\n\t\t...{e}{node.inputs_from}'
             s += f'{e}{name}'
             if node.last:s += f'{e}END'
