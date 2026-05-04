@@ -1,21 +1,38 @@
-# yieldgraph
+﻿# yieldgraph
 
-> A lightweight Python library for building interruptible, generator-driven ETL pipelines as directed graphs.
+> Build interruptible, generator-driven ETL pipelines as directed graphs — in pure Python.
+
+[![CI](https://github.com/j4ggr/yieldgraph/actions/workflows/ci.yml/badge.svg)](https://github.com/j4ggr/yieldgraph/actions/workflows/ci.yml)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-teal)](https://j4ggr.github.io/yieldgraph/)
 
 ---
 
-## Overview
+## What is yieldgraph?
 
-**yieldgraph** lets you compose data processing pipelines by chaining Python callables into a directed graph of nodes connected by edges. Each node wraps a *job* — any regular function or generator function — and passes its outputs downstream as inputs to the next node. The pipeline supports cooperative cancellation, per-node error collection, and real-time progress tracking.
+**yieldgraph** lets you compose data-processing pipelines by connecting plain Python
+callables into a directed graph. Each callable becomes a **Node**. Nodes are linked
+by **Edges** — lightweight queues that carry data tuples downstream. Call `graph.run()`
+and the pipeline does the rest.
 
-Key concepts:
+There is no framework to learn. Your business logic stays in ordinary Python functions.
+yieldgraph just wires them together and gets out of the way.
 
-| Concept | Description |
-|---------|-------------|
-| `Job`   | Wraps a callable (regular or generator). Provides an interruptible generator loop that can be stopped at any yield point. |
-| `Edge`  | A `deque`-based queue that connects two nodes and carries data tuples between them. |
-| `Node`  | A processing unit that runs its `Job` over all inputs from an incoming `Edge` and pushes results to one or more outgoing `Edge`s. |
-| `Graph` | Owns the collection of nodes and edges. Chains are added declaratively; the graph is executed by calling `graph.run()` (or `graph()`). |
+---
+
+## Features
+
+- **Pure Python, zero runtime dependencies** — stdlib only; `loguru` is optional.
+- **Generator-native** — `yield` zero, one, or many results per input; everything stays lazy.
+- **Cooperative cancellation** — set `graph.cancelled = True` or press `Ctrl+C`; the pipeline
+  stops cleanly at the next `yield`.
+- **Fan-out branching** — attach multiple downstream chains to any node with a single
+  `add_chain` call.
+- **Threaded mode** — flip `YIELDGRAPH_THREADED=1` to run all nodes concurrently; edges
+  become thread-safe blocking queues automatically.
+- **Built-in observability** — every node exposes `n_consumed`, `n_produced`, `errors`,
+  and a `progress` fraction you can poll at any time.
 
 ---
 
@@ -25,150 +42,176 @@ Key concepts:
 pip install yieldgraph
 ```
 
-Or from source:
+From source:
 
 ```bash
-git clone https://github.com/<your-org>/yieldgraph.git
+git clone https://github.com/j4ggr/yieldgraph.git
 cd yieldgraph
 pip install -e .
 ```
 
 ---
 
-## Quick Start
+## Quick start
 
 ```python
 from yieldgraph import Graph
 
-# Define processing steps as plain functions or generators
-def extract(graph, source):
-    for record in source:
-        yield record          # multi-output: each record flows to the next node
+def source(graph):
+    """Emit raw records — receives the Graph instance as first argument."""
+    for row in [
+        {"name": "Alice", "score": 95},
+        {"name": "Bob",   "score": 72},
+        {"name": "Carol", "score": 88},
+    ]:
+        yield row
 
-def transform(record):
-    return record.strip().upper()
+def grade(record):
+    """Add a pass/fail label to each record."""
+    record["grade"] = "pass" if record["score"] >= 85 else "fail"
+    yield record
 
-def load(record):
-    print(record)
-
-# Build the graph
-g = Graph()
-g.add_chain(
-    extract, transform, load,
-    input_first=(["  hello ", " world "],),
-)
-
-# Run
-g.run()
-print("Success:", g.succeed)
-```
-
----
-
-## Branching / Parallel Chains
-
-Attach additional chains to an existing node with `input_of`:
-
-```python
-g = Graph()
-g.add_chain(extract, transform_a, load_a, input_first=(data,))
-g.add_chain(transform_b, load_b, input_of="transform_a")
-g.run()
-```
-
----
-
-## Cooperative Cancellation
-
-Set `graph.cancel = True` from any thread or from within a job to stop the pipeline cleanly at the next yield point. No data is silently dropped — in-flight results are flushed before the run exits.
-
-```python
-import threading
+def format_output(record):
+    """Format as a human-readable string."""
+    yield f"{record['name']}: {record['grade']} ({record['score']})"
 
 g = Graph()
-g.add_chain(slow_extract, transform, load, input_first=(large_dataset,))
+g.add_chain(source, grade, format_output)
+g.run()
 
-t = threading.Thread(target=g.run)
-t.start()
-
-# Cancel after 5 seconds
-import time; time.sleep(5)
-g.cancel = True
-t.join()
+for row in g.output:
+    print(row[0])
+# Alice: pass (95)
+# Bob: fail (72)
+# Carol: pass (88)
 ```
 
 ---
 
-## Progress & Status
+## Fan-out — multiple downstream chains
+
+```python
+def source(graph):
+    for x in range(1, 6):
+        yield x
+
+def store_db(x):
+    yield f"db:{x}"
+
+def send_queue(x):
+    yield f"mq:{x}"
+
+g = Graph()
+g.add_chain(source, store_db)    # chain 1
+g.add_chain(source, send_queue)  # chain 2 — same source, parallel branch
+g.run()
+
+print(g.output)
+# [('db:1',), ('db:2',), ..., ('mq:1',), ('mq:2',), ...]
+```
+
+---
+
+## Cooperative cancellation
+
+```python
+def source(graph):
+    for i in range(1_000_000):
+        if i >= 5:
+            graph.cancelled = True   # stop cleanly after this item
+            return
+        yield i
+
+g = Graph()
+g.add_chain(source, process)
+g.run()
+
+print(len(g.output))   # 5
+print(g.cancelled)     # True
+```
+
+---
+
+## Threaded execution
+
+```bash
+YIELDGRAPH_THREADED=1 python my_pipeline.py
+```
+
+Or in Python before the run:
+
+```python
+import os
+os.environ["YIELDGRAPH_THREADED"] = "1"
+
+g = Graph()
+g.add_chain(fetch_from_api, transform, write_to_db)
+g.run()
+```
+
+---
+
+## Error handling
+
+Exceptions raised inside a node are caught per-item and stored — they never abort the
+pipeline. Inspect them after the run:
 
 ```python
 g.run()
 
-g.succeed        # bool  — finished without errors
-g.has_loads      # bool  — finished and produced output
-g.step           # str   — human-readable name of the current node
-g.progress       # int   — 0–100 % progress of the current node
-g.output         # list  — flat list of all tuples emitted by end nodes
-```
-
----
-
-## Error Handling
-
-Exceptions inside a job are caught per-record, stored on the node, and do not abort the pipeline. After the run, inspect errors per node:
-
-```python
 for name, node in g.nodes.items():
-    if node.count_err:
-        print(f"{name}: {node.errors}")
+    if node.n_errors:
+        print(f"{name}: {node.n_errors} error(s)")
+        for err in node.errors:
+            print(f"  {type(err).__name__}: {err}")
+
+if g.succeeded:
+    print(f"Done — {len(g.output)} rows produced")
 ```
 
 ---
 
-## API Reference
+## Status & progress
 
-### `Job(function, designation="")`
-
-| Attribute / Method | Description |
-|--------------------|-------------|
-| `name`             | Name of the wrapped function. |
-| `designation`      | Human-readable label (auto-derived from name if not provided). |
-| `interrupt`        | Set to `True` to stop the generator at the next yield. |
-| `running`          | `True` while the generator loop is active. |
-| `__call__(*args)`  | Returns an interruptible generator for one invocation. |
-
-### `Edge`
-
-A `collections.deque` subclass. Nodes `append` outputs and `popleft` inputs.
-
-### `Node(graph, job_function, inputs_from, designation="", first=True, last=False)`
-
-| Property / Method | Description |
-|-------------------|-------------|
-| `count_in`        | Records consumed so far. |
-| `count_out`       | Records produced so far. |
-| `count_err`       | Number of caught exceptions. |
-| `progress`        | Float in (0, 1] representing completion. |
-| `loop(edges_in, edges_out)` | Run the job over all available inputs. |
-
-### `Graph()`
-
-| Method / Property | Description |
-|-------------------|-------------|
-| `add_chain(*fns, input_first=(), input_of="", designations=())` | Add a linear chain of nodes. |
-| `run()`           | Execute the full graph. |
-| `cancel`          | Set to `True` to request cooperative cancellation. |
-| `succeed`         | `True` if finished with no errors. |
-| `output`          | Flat list of all end-node outputs. |
+| Expression | Type | Description |
+|---|---|---|
+| `g.output` | `list[tuple]` | All tuples emitted by terminal nodes |
+| `g.succeeded` | `bool` | Finished without errors |
+| `g.has_output` | `bool` | Finished and produced at least one row |
+| `g.error` | `str` | Graph-level error description (empty on success) |
+| `g.step` | `str` | Human-readable label of the currently executing node |
+| `g.progress` | `int` | 0–100 % progress of the current node |
+| `g.cancelled` | `bool` | Whether the run was cancelled |
+| `g.finished` | `bool` | Whether `run()` has returned |
 
 ---
 
-## Requirements
+## Documentation
 
-- Python ≥ 3.10 (uses `TypeAlias`)
+Full guides and API reference at **https://j4ggr.github.io/yieldgraph/**
+
+- [Getting Started](https://j4ggr.github.io/yieldgraph/guides/getting-started/)
+- [Patterns & Recipes](https://j4ggr.github.io/yieldgraph/guides/patterns/)
+- [Configuration](https://j4ggr.github.io/yieldgraph/guides/configuration/)
+- [API Reference](https://j4ggr.github.io/yieldgraph/api/)
+
+---
+
+## Development
+
+```bash
+# Install dev dependencies
+pdm install -G test -G doc
+
+# Run tests
+pdm run pytest
+
+# Build docs locally
+pdm run mkdocs serve
+```
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)
