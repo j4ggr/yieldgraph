@@ -83,7 +83,7 @@ class Node(LoggingBehavior):
     - pulling items from its incoming :class:`~yieldgraph.edge.Edge` queues,
     - feeding each item as ``*args`` into the job,
     - fanning every yielded result to all outgoing edges,
-    - tracking counts (``count_in``, ``count_out``) and caught errors,
+    - tracking counts (``n_consumed``, ``n_produced``) and caught errors,
     - cooperating with the owning :class:`~yieldgraph.graph.Graph` on
       cancellation.
 
@@ -108,55 +108,84 @@ class Node(LoggingBehavior):
 
     Attributes
     ----------
-    name : str
-        Function name of the wrapped job.
-    job : Job
-        The underlying :class:`~yieldgraph.job.Job` instance.
     inputs_from : str
         Name of the upstream node that feeds this node.
     first : bool
         ``True`` for the first node of a chain.
     last : bool
         ``True`` for the last node of a chain.
-    count_in : int
+    n_consumed : int
         Number of input items consumed so far in the current run.
-    count_out : int
+    n_produced : int
         Number of output items produced so far in the current run.
     errors : list[Exception]
-        Exceptions caught during :meth:`do_job` in the current run.
+        Exceptions caught during :meth:`_run_one` in the current run.
+    info : str
+        Free-form string available for progress displays or annotations.
     """
 
-    name: str
-    job: Job
-    inputs_from: str
-    first: bool
-    last: bool
+    # --- private state ------------------------------------------------
 
-    repr_len: int = 25
-    """Column width used when formatting :meth:`__repr__` output."""
+    _graph: Any
+    """Owning :class:`~yieldgraph.graph.Graph`; read for ``cancel`` flag."""
 
-    n_jobs_todo: int
-    """Total number of input items queued at the start of :meth:`loop`."""
-
-    count_in: int
-    count_out: int
-    errors: List[Exception]
+    _job: Job
+    """Wrapped :class:`~yieldgraph.job.Job` instance."""
 
     _inputs: List[Edge]
-    _inputs_idx: int
-    outputs: List[Edge]
+    """List of all incoming edge queues."""
 
-    additional_info: str
-    """Free-form string shown in progress displays."""
+    _active_edge_index: int
+    """Index into :attr:`_inputs` pointing at the first non-empty edge."""
 
-    last_output: Tuple[Any, ...]
+    _col_width: int
+    """Column width used to align :meth:`__repr__` output across nodes."""
+
+    _last_output: Tuple[Any, ...]
     """Most recent output tuple produced by the job."""
 
-    is_first_job: bool
-    """``True`` while processing the first item in :meth:`loop`."""
+    _processing_first: bool
+    """``True`` while :meth:`_run_one` is handling the first queued item."""
 
-    is_last_job: bool
-    """``True`` while processing the last item in :meth:`loop`."""
+    _processing_last: bool
+    """``True`` while :meth:`_run_one` is handling the last queued item."""
+
+    # --- public state -------------------------------------------------
+
+    inputs_from: str
+    """Name of the upstream node that feeds this node."""
+
+    first: bool
+    """``True`` for the first node of a chain."""
+    
+    last: bool
+    """``True`` for the last node of a chain."""
+
+    n_queued: int
+    """Total number of input items queued at the start of :meth:`process`."""
+
+    n_consumed: int
+    """Number of input items pulled from the active edge so far."""
+
+    n_produced: int
+    """Number of output tuples pushed to outgoing edges so far."""
+
+    errors: List[Exception]
+    """List of exceptions caught during :meth:`_run_one` in the current run."""
+
+    outputs: List[Edge]
+    """List of outgoing edges."""
+
+    info: str
+    """Free-form string available for progress displays or annotations."""
+
+    # --- class-level default ------------------------------------------
+
+    _col_width: int = 25
+
+    # ------------------------------------------------------------------
+    # Construction
+    # ------------------------------------------------------------------
 
     def __init__(
             self,
@@ -167,33 +196,44 @@ class Node(LoggingBehavior):
             first: bool = True,
             last: bool = False,
             ) -> None:
-        self.graph = graph
-        self.job = Job(job_function, label)
-        self.name = self.job.name
+        self._graph = graph
+        self._job = Job(job_function, label)
         self.inputs_from = inputs_from
         self.first = first
         self.last = last
-        self.preset()
+        self.reset()
 
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
 
     @property
-    def count_err(self) -> int:
-        """Number of errors caught so far in the current run (read-only)."""
+    def name(self) -> str:
+        """Function name of the wrapped job (read-only).
+
+        Derived from ``job_function.__name__`` at construction time.
+        """
+        return self._job.name
+
+    @property
+    def n_errors(self) -> int:
+        """Number of exceptions caught so far in the current run (read-only)."""
         return len(self.errors)
 
     @property
     def inputs(self) -> Edge:
-        """Active input edge selected by :attr:`_inputs_idx` (read-only getter).
+        """Active input edge (read-only getter).
 
-        The setter accepts a list of edges and automatically finds the
-        first non-empty one, storing its index in ``_inputs_idx``.
+        Returns the first non-empty edge from :attr:`_inputs`, as
+        tracked by :attr:`_active_edge_index`.  Returns an empty
+        :class:`~yieldgraph.edge.Edge` when no inputs have been set.
+
+        The *setter* accepts a list of edges and automatically selects
+        the first non-empty one.
         """
         if not self._inputs:
             return Edge()
-        return self._inputs[self._inputs_idx]
+        return self._inputs[self._active_edge_index]
 
     @inputs.setter
     def inputs(self, edges: List[Edge]) -> None:
@@ -202,67 +242,68 @@ class Node(LoggingBehavior):
         if self._inputs:
             for idx, edge in enumerate(self._inputs):
                 if len(edge):
-                    self._inputs_idx = idx
+                    self._active_edge_index = idx
                     break
 
     @property
-    def n_inputs(self) -> int:
-        """Number of items currently available on the active input edge (read-only)."""
+    def input_count(self) -> int:
+        """Number of items available on the active input edge (read-only)."""
         if type(self.inputs) is tuple and self.inputs:
             return 1
         return len(self.inputs)
 
     @property
-    def n_outputs(self) -> int:
-        """Number of items on the first output edge (read-only)."""
+    def output_count(self) -> int:
+        """Number of items sitting on the first output edge (read-only)."""
         if type(self.outputs) is tuple and self.outputs:
             return 1
         return len(self.outputs)
 
     @property
-    def no_outputs(self) -> bool:
-        """``True`` if all output edges are empty (read-only)."""
+    def outputs_empty(self) -> bool:
+        """``True`` if every outgoing edge is empty (read-only)."""
         if not self.outputs:
             return True
         return not any(bool(len(edge)) for edge in self.outputs)
 
     @property
     def progress(self) -> float:
-        """Fraction of input items processed, clamped to ``[0.01, 1.0]`` (read-only).
+        """Fraction of queued items processed, clamped to ``[0.01, 1.0]`` (read-only).
 
-        Returns ``0.5`` when no items were queued (e.g. a source node
-        that generates its own data).
+        Returns ``0.5`` when :attr:`n_queued` is zero (e.g. a source
+        node that generates its own data rather than receiving inputs).
         """
-        p = 0.5 if self.n_jobs_todo == 0 else self.count_in / self.n_jobs_todo
+        p = 0.5 if self.n_queued == 0 else self.n_consumed / self.n_queued
         return max(0.01, min(p, 1.0))
 
     # ------------------------------------------------------------------
-    # Public methods
+    # Public API
     # ------------------------------------------------------------------
 
-    def preset(self) -> None:
-        """Reset all counters, errors, and edge references for a new run.
+    def reset(self) -> None:
+        """Clear all counters, errors, and edge references for a new run.
 
         Called automatically from :meth:`__init__` and by
         :class:`~yieldgraph.graph.Graph` before each run.
         """
-        self.n_jobs_todo = 0
-        self.count_in = 0
-        self.count_out = 0
+        self.n_queued = 0
+        self.n_consumed = 0
+        self.n_produced = 0
         self.errors = []
         self._inputs = []
-        self._inputs_idx = 0
+        self._active_edge_index = 0
         self.outputs = []
-        self.additional_info = ''
-        self.is_first_job = False
-        self.is_last_job = False
+        self.info = ''
+        self._processing_first = False
+        self._processing_last = False
 
-    def loop(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:
+    def process(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:
         """Consume all items from *edges_in* and push results to *edges_out*.
 
-        Iterates over every queued input item and calls :meth:`do_job`
-        for each one.  Sets :attr:`is_first_job` and :attr:`is_last_job`
-        flags so the job function can branch on position if needed.
+        Iterates over every queued input item and calls :meth:`_run_one`
+        for each one.  Sets :attr:`_processing_first` and
+        :attr:`_processing_last` flags so the job function can branch on
+        position if needed.
 
         Parameters
         ----------
@@ -271,24 +312,26 @@ class Node(LoggingBehavior):
         edges_out : list[Edge]
             Outgoing edge queues to fill with results.
         """
-        self.log(
-            f'{self.n_inputs} jobs for node "{self.job.label}"',
-            LOG.INFO)
+        self.log_info(f'{self.input_count} jobs for node "{self._job.label}"')
         self.inputs = edges_in
         self.outputs = edges_out
-        self.n_jobs_todo = deepcopy(self.n_inputs)
-        self.job.cancelled = False
-        for job_count in range(1, self.n_jobs_todo + 1):
-            self.is_first_job = job_count == 1
-            self.is_last_job = job_count == self.n_jobs_todo
-            self.do_job(self.inputs.popleft())
+        self.n_queued = deepcopy(self.input_count)
+        self._job.cancelled = False
+        for job_count in range(1, self.n_queued + 1):
+            self._processing_first = job_count == 1
+            self._processing_last = job_count == self.n_queued
+            self._run_one(self.inputs.popleft())
 
-    def do_job(self, job_data: Tuple[Any, ...]) -> None:
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _run_one(self, job_data: Tuple[Any, ...]) -> None:
         """Run the job for a single input item and collect its outputs.
 
         Unpacks *job_data* as positional arguments into the job generator.
         Each yielded value is normalised to a tuple via :func:`_ensure_tuple`
-        and pushed to all outgoing edges via :meth:`_store_output`.
+        and pushed to all outgoing edges via :meth:`_fan_out`.
 
         Cancellation is checked after every yielded value.  A
         :exc:`KeyboardInterrupt` sets ``graph.cancel`` so all subsequent
@@ -301,19 +344,19 @@ class Node(LoggingBehavior):
             Arguments to unpack into the job callable.
         """
         try:
-            if self.graph.cancel:
+            if self._graph.cancel:
                 self.log('Skip job because of graph cancel', LOG.TRACE)
                 return
 
-            for output in self.job(*job_data):
-                if self.graph.cancel:
-                    self.job.cancelled = True
+            for output in self._job(*job_data):
+                if self._graph.cancel:
+                    self._job.cancelled = True
                     break
 
-                self._store_output(_ensure_tuple(output))
+                self._fan_out(_ensure_tuple(output))
 
         except KeyboardInterrupt as e:
-            self.graph.cancel = True
+            self._graph.cancel = True
             self.log(f'{self} interrupted because: {e}', LOG.INFO)
 
         except Exception as e:
@@ -325,25 +368,21 @@ class Node(LoggingBehavior):
             self.errors.append(e)
 
         finally:
-            self.count_in += 1
+            self.n_consumed += 1
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _store_output(self, output: Tuple[Any, ...]) -> None:
-        """Append *output* to every outgoing edge and increment :attr:`count_out`.
+    def _fan_out(self, output: Tuple[Any, ...]) -> None:
+        """Append *output* to every outgoing edge and increment :attr:`n_produced`.
 
         Parameters
         ----------
         output : tuple
-            The normalised output tuple to fan out.
+            The normalised output tuple to fan out to all outgoing edges.
         """
-        self.last_output = output
+        self._last_output = output
         for edge in self.outputs:
             edge.append(output)
         self.log(f'Stored output @ node {self}', LOG.TRACE)
-        self.count_out += 1
+        self.n_produced += 1
 
     # ------------------------------------------------------------------
     # Dunder methods
@@ -358,22 +397,21 @@ class Node(LoggingBehavior):
                 return len(inputs[0])
             except TypeError:
                 return 0
-        return self.n_inputs
+        return self.input_count
 
     def __str__(self) -> str:
         return f'{self.name} ({self.inputs_from})'
 
     def __repr__(self) -> str:
-        name = self.name.ljust(self.repr_len + 1)
-        r = f'  |-{name}|{self.count_in: 4}|{self.count_out: 4}|{self.count_err: 4}|'
+        name = self.name.ljust(self._col_width + 1)
+        r = f'  |-{name}|{self.n_consumed: 4}|{self.n_produced: 4}|{self.n_errors: 4}|'
         if self.first:
             r = (
-                f'{self.inputs_from.ljust(self.repr_len + 6)}'
+                f'{self.inputs_from.ljust(self._col_width + 6)}'
                 + ' '.join(s.ljust(4) for s in ('in', 'out', 'err'))
                 + f'\n{r}'
             )
         return r
 
 
-__all__ = ['Node', 'START_NODE_NAME']
-
+__all__ = ['Node', 'START_NODE_NAME', '_ensure_tuple']

@@ -229,8 +229,8 @@ class Graph(LoggingBehavior):
                 break
             
             self.current_node_name = name
-            node.preset()
-            node.loop(edges_in, self.edges[name])
+            node.reset()
+            node.process(edges_in, self.edges[name])
             self.edges[node.inputs_from] = node._inputs
             self.edges[name] = node.outputs
         self.finished = True
@@ -245,14 +245,14 @@ class Graph(LoggingBehavior):
         self.finished = False
         self.error_msg = ''
         self.cancel = False
-        self.adjust_node_repr_len()
+        self._adjust_col_widths()
         self.current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
         self.log(f'Run following graph\n{repr(self)}', LOG.INFO)
 
-    def adjust_node_repr_len(self) -> None:
-        repr_len = max([len(n) for n in self.nodes.keys()])
-        for node in self.nodes.values(): 
-            node.repr_len = repr_len
+    def _adjust_col_widths(self) -> None:
+        col_width = max(len(n) for n in self.nodes.keys())
+        for node in self.nodes.values():
+            node._col_width = col_width
 
     def __repr__(self) -> str:
         e = ' -> '
