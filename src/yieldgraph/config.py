@@ -39,33 +39,63 @@ __all__ = [
     'LOG',
     'LoggingBehavior',
     'START_NODE_NAME',
-    'THREADED_ENV_VAR',
+    'ENV',
 ]
 
 
 START_NODE_NAME = '__START__'
 """Sentinel name for the implicit start node that seeds pipeline chains."""
 
-THREADED_ENV_VAR = 'YIELDGRAPH_THREADED'
-"""Name of the environment variable that enables threaded execution.
+@dataclass(frozen=True)
+class _ENV_:
+    """Class containing environment variable names for configuration of the
+    `yieldgraph` library. This class defines constants for environment 
+    variable names that can be used to configure the behavior of the 
+    library, such as enabling threaded execution or configuring logging 
+    behavior. By using this class, you can centralize the management of 
+    environment variable names and avoid hardcoding them throughout the 
+    codebase."""
+    THREADED: Literal['YIELDGRAPH_THREADED'] = 'YIELDGRAPH_THREADED'
+    """Name of the environment variable that enables threaded execution.
 
-Set this variable to ``'1'``, ``'true'``, or ``'yes'`` (case-insensitive)
-before running a :class:`~yieldgraph.graph.Graph` to execute all nodes
-concurrently in separate threads instead of sequentially.
+    Set this variable to ``'1'``, ``'true'``, or ``'yes'`` (case-insensitive)
+    before running a :class:`~yieldgraph.graph.Graph` to execute all nodes
+    concurrently in separate threads instead of sequentially.
 
-Examples
---------
-```bash
-YIELDGRAPH_THREADED=1 python my_pipeline.py
-```
-or in Python:
-```python
-import os
-os.environ['YIELDGRAPH_THREADED'] = '1'
-g = Graph()
-g.add_chain(extract, transform, load)
-g.run()
-```
+    Examples
+    --------
+    ```bash
+    YIELDGRAPH_THREADED=1 python my_pipeline.py
+    ```
+    or in Python:
+    ```python
+    import os
+    os.environ['YIELDGRAPH_THREADED'] = '1'
+    g = Graph()
+    g.add_chain(extract, transform, load)
+    g.run()
+    ```
+    """
+    LOG_TRACEBACK: Literal['YIELDGRAPH_LOG_TRACEBACK'] = 'YIELDGRAPH_LOG_TRACEBACK'
+    """Name of the environment variable that configures whether to 
+    include traceback information in log messages when an exception is 
+    logged. Set this variable to ``'1'``, ``'true'``, or ``'yes'`` 
+    (case-insensitive) to include traceback information in log messages 
+    when an exception is logged. By default, this variable is set to a 
+    falsy value, so traceback information will not be included in the 
+    log output.
+    """
+
+ENV = _ENV_()
+"""Instance of the `_ENV_` class containing environment variable names 
+for configuration of the `yieldgraph` library.
+
+This instance can be used throughout the `yieldgraph` library to access
+the names of environment variables that can be used to configure the
+behavior of the library, such as `ENV.THREADED` for enabling threaded
+execution and `ENV.LOG_TRACEBACK` for configuring logging behavior 
+related to exception tracebacks. By using this instance, you can avoid 
+hardcoding environment variable names throughout the codebase.
 """
 
 @dataclass(frozen=True)
@@ -93,7 +123,7 @@ class _Log_:
     CRITICAL: Literal['CRITICAL'] = 'CRITICAL'
     """Log level for critical messages."""
     TRACEBACK: bool = os.getenv(
-        'YIELDGRAPH_LOG_TRACEBACK', 'False').lower() in ('true', '1', 't')
+        ENV.LOG_TRACEBACK, 'False').lower() in ('true', '1', 't')
     """Flag indicating whether to include traceback information in log
     messages when an exception is logged. This can be set using the
     `YIELDGRAPH_LOG_TRACEBACK` environment variable. If the variable is 

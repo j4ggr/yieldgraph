@@ -42,9 +42,9 @@ from typing import List
 from typing import Tuple
 
 from .config import LOG
+from .config import ENV
 from .config import LoggingBehavior
 from .config import START_NODE_NAME
-from .config import THREADED_ENV_VAR
 from .edge import Edge
 from .node import Node
 
@@ -450,7 +450,7 @@ class Graph(LoggingBehavior):
         self.finished = False
         self.error = ''
         self.cancelled = False
-        self._threaded = os.environ.get(THREADED_ENV_VAR, '').lower() in ('1', 'true', 'yes')
+        self._threaded = os.environ.get(ENV.THREADED, '').lower() in ('1', 'true', 'yes')
         self._adjust_col_widths()
         self._current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
         mode = 'threaded' if self._threaded else 'sequential'
