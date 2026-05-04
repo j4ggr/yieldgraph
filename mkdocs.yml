@@ -46,6 +46,16 @@ theme:
 repo_name: j4ggr/yieldgraph
 repo_url: https://github.com/j4ggr/yieldgraph
 
+nav:
+  - Home: index.md
+  - Guides:
+      - guides/index.md
+      - Getting Started: guides/getting-started.md
+      - Patterns & Recipes: guides/patterns.md
+      - Configuration: guides/configuration.md
+  - API Reference: api/index.md
+  - Changelog: CHANGELOG.md
+
 plugins:
   search: null
   mkdocstrings:
@@ -58,7 +68,7 @@ plugins:
           heading_level: 2
           merge_init_into_class: true
           show_bases: true
-          show_source: false
+          show_source: true
           show_root_heading: true
           show_symbol_type_heading: true
           show_symbol_type_toc: true
@@ -78,16 +88,20 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
-  - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.details
+  - pymdownx.snippets
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
@@ -100,10 +114,3 @@ extra_javascript:
 
 extra_css:
   - css/custom-colors.css
-
-nav:
-  - Home:
-    - Welcome: index.md
-    - Changelog: CHANGELOG.md
-  - Getting Started: guides/index.md
-  - API Reference: api/index.md

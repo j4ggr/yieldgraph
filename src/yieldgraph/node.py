@@ -247,7 +247,7 @@ class Node(LoggingBehavior):
     @inputs.setter
     def inputs(self, edges: List[Edge]) -> None:
         self._inputs = edges
-        self.log(f'Inputs changed, n inputs = {len(edges)}', LOG.TRACE)
+        self.log_trace(f'Inputs changed, n inputs = {len(edges)}')
         if self._inputs:
             for idx, edge in enumerate(self._inputs):
                 if len(edge):
@@ -359,7 +359,7 @@ class Node(LoggingBehavior):
         """
         try:
             if self._graph.cancelled:
-                self.log('Skip job because of graph cancel', LOG.TRACE)
+                self.log_trace('Skip job because of graph cancel')
                 return
 
             for output in self._job(*job_data):
@@ -371,14 +371,13 @@ class Node(LoggingBehavior):
 
         except KeyboardInterrupt as e:
             self._graph.cancelled = True
-            self.log(f'{self} interrupted because: {e}', LOG.INFO)
+            self.log_info(f'{self} interrupted because: {e}')
 
         except Exception as e:
-            self.log(
-                f'Caught error = {e}\nError occurred @ node {repr(self)}',
-                LOG.WARNING)
+            self.log_warning(
+                f'Caught error = {e}\nError occurred @ node {repr(self)}')
             if LOG.TRACEBACK:
-                self.log(traceback.format_exc(), LOG.ERROR)
+                self.log_exception(traceback.format_exc(), e)
             self.errors.append(e)
 
         finally:
@@ -402,7 +401,7 @@ class Node(LoggingBehavior):
         self._last_output = output
         for edge in self.outputs:
             edge.put(output)
-        self.log(f'Stored output @ node {self}', LOG.TRACE)
+        self.log_trace(f'Stored output @ node {self}')
         self.n_produced += 1
 
     def process_streaming(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:

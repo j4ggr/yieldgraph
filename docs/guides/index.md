@@ -1,63 +1,71 @@
 # Guides
 
-## Building a simple pipeline
+Welcome to the yieldgraph guides. These pages walk you through building pipelines — from a simple two-step chain all the way to multi-branch, threaded production pipelines.
 
-Every pipeline starts with a `Graph`. Add a chain of callables with `add_chain`, then call `run()`.
+<div class="grid cards" markdown>
 
-The first callable in a chain always receives the `Graph` instance as its first argument.  
-Subsequent callables receive whatever the previous callable `yield`s.
+-   :material-rocket-launch: **Getting Started**
+
+    ---
+
+    Install yieldgraph and build your first pipeline in minutes. Covers sources, transforms, output, and the tuple data model.
+
+    [:octicons-arrow-right-24: Getting Started](getting-started.md)
+
+-   :material-puzzle: **Patterns & Recipes**
+
+    ---
+
+    Fan-out branches, `attach_to`, error handling, cooperative cancellation, progress monitoring, and threaded execution.
+
+    [:octicons-arrow-right-24: Patterns & Recipes](patterns.md)
+
+-   :material-cog: **Configuration**
+
+    ---
+
+    Environment variables, log levels, the `LoggingBehavior` mixin, and the `ENV` / `LOG` constants objects.
+
+    [:octicons-arrow-right-24: Configuration](configuration.md)
+
+</div>
+
+---
+
+## Quick reference
 
 ```python
 from yieldgraph import Graph
 
+# Define steps
 def source(graph):
-    for item in [1, 2, 3, 4, 5]:
-        yield item
+    for x in range(1, 6):
+        yield x
 
-def double(x):
-    yield x * 2
+def square(x):
+    yield x ** 2
 
-def to_str(x):
-    yield str(x)
-
+# Build
 g = Graph()
-g.add_chain(source, double, to_str)
+g.add_chain(source, square)
+
+# Run
 g.run()
 
-print(g.output)  # ['2', '4', '6', '8', '10']
+# Consume
+print(g.output)
+# [(1,), (4,), (9,), (16,), (25,)]
 ```
 
-## Using regular functions
-
-Callables do not need to be generators. A plain function that returns a value is
-automatically wrapped into a one-shot generator.
-
-```python
-def add_one(x):
-    return x + 1
-```
-
-## Fan-out (multiple downstream nodes)
-
-Call `add_chain` multiple times to branch from the same source node.
-
-```python
-g = Graph()
-g.add_chain(source, branch_a)
-g.add_chain(source, branch_b)
-g.run()
-```
-
-Both `branch_a` and `branch_b` receive every item produced by `source`.
-
-## Threaded execution
-
-Set the environment variable `YIELDGRAPH_THREADED=1` before running to execute
-each node in its own thread. Edges become thread-safe blocking queues.
-
-```bash
-YIELDGRAPH_THREADED=1 python my_pipeline.py
-```
+| Task | How |
+|---|---|
+| Build a linear pipeline | `g.add_chain(fn1, fn2, fn3)` |
+| Branch from a node | `g.add_chain(fn, attach_to="node_name")` |
+| Run sequentially | `g.run()` |
+| Run with threads | `YIELDGRAPH_THREADED=1 python ...` |
+| Check success | `g.succeeded` |
+| Get errors | `node.errors` for each node |
+| Cancel early | `graph.cancelled = True` inside a node |
 
 Or from Python:
 

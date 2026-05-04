@@ -211,7 +211,7 @@ class Graph(LoggingBehavior):
         for node_name in self.terminal_nodes:
             for edge in self.edges[node_name]:
                 self._output.extend(list(edge))
-        self.log(f'{len(self._output)} outputs found', LOG.TRACE)
+        self.log_trace(f'{len(self._output)} outputs found')
         return self._output
 
     @property
@@ -301,7 +301,7 @@ class Graph(LoggingBehavior):
             if self not in initial_input:
                 initial_input = (self,) + initial_input
             self.edges[START_NODE_NAME].append(Edge([initial_input]))
-            self.log(f'Initial input = {initial_input}', LOG.DEBUG)
+            self.log_trace(f'Initial input = {initial_input}')
 
         edge_in = attach_to if attach_to else START_NODE_NAME
         if not labels:
@@ -322,7 +322,7 @@ class Graph(LoggingBehavior):
             if node.last:
                 self.terminal_nodes.append(node.name)
             self.edges[node.name].append(Edge())
-            self.log(f'Added node {node}', LOG.DEBUG)
+            self.log_trace(f'Added node {node}')
             edge_in = node.name
 
     def run(self) -> None:
@@ -345,9 +345,9 @@ class Graph(LoggingBehavior):
         else:
             self._run_sequential()
         self.finished = True
-        self.log(
-            'ETL process done:\n' + '\n'.join(repr(n) for n in self.nodes.values()),
-            LOG.INFO)
+        self.log_info(
+            'ETL process done:\n' + '\n'.join(repr(n)
+            for n in self.nodes.values()))
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -362,14 +362,14 @@ class Graph(LoggingBehavior):
         for i, (name, node) in enumerate(self.nodes.items()):
             if self.cancelled:
                 self.error = 'ETL Auftrag abgebrochen'
-                self.log('ETL job cancelled', LOG.WARNING)
+                self.log_warning('ETL job cancelled')
                 break
 
             self._node_index = i + 1
             edges_in = self.edges[node.inputs_from]
             if not any(edges_in) and node.inputs_from != START_NODE_NAME:
                 self.error = f'Keine Eingangsdaten für Knoten: {node.name}'
-                self.log(f'No inputs for {name}, edges = \n{edges_in}', LOG.ERROR)
+                self.log_error(f'No inputs for {name}, edges = \n{edges_in}')
                 break
 
             self._current_node_name = name
@@ -410,7 +410,7 @@ class Graph(LoggingBehavior):
             node.reset()
 
             # Determine which single output edge from inputs_from belongs to
-            # this node.  In a linear chain there is exactly one; in a
+            # this node. In a linear chain there is exactly one; in a
             # fan-out chain add_chain appended one per branch.
             all_in_edges = self.edges[node.inputs_from]
             # Count how many nodes upstream of this one share the same source.
@@ -432,7 +432,7 @@ class Graph(LoggingBehavior):
 
             t = threading.Thread(target=_target, name=name, daemon=True)
             threads.append(t)
-            self.log(f'Created thread for node {name}', LOG.DEBUG)
+            self.log_trace(f'Created thread for node {name}')
 
         for t in threads:
             t.start()
@@ -454,7 +454,7 @@ class Graph(LoggingBehavior):
         self._adjust_col_widths()
         self._current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
         mode = 'threaded' if self._threaded else 'sequential'
-        self.log(f'Run ({mode}) following graph\n{repr(self)}', LOG.INFO)
+        self.log_info(f'Run ({mode}) following graph\n{repr(self)}')
 
     def _adjust_col_widths(self) -> None:
         """Align the ``_col_width`` of all nodes to the longest node 
@@ -504,7 +504,7 @@ class Graph(LoggingBehavior):
 
     def __call__(self) -> None:
         """Execute the pipeline — equivalent to calling :meth:`run`."""
-        self.log('Start ETL process', LOG.TRACE)
+        self.log_trace('Start ETL process')
         self.run()
 
 

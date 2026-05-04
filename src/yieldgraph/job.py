@@ -54,8 +54,6 @@ from typing import Any
 from typing import Callable
 from typing import Generator
 
-from .config import LoggingBehavior
-
 
 def _as_generator(fn: Callable) -> Callable:
     """Normalise *fn* into a generator function.
@@ -169,7 +167,7 @@ def _wrap(fn: Callable, job: 'Job') -> Callable:
     return runner
 
 
-class Job(LoggingBehavior):
+class Job:
     """Wraps a callable for interruptible, generator-driven execution.
 
     :class:`Job` is the execution unit used by :class:`~yieldgraph.node.Node`.
