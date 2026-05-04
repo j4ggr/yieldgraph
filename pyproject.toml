@@ -1,0 +1,24 @@
+[project]
+name = "yieldgraph"
+version = "0.1.0"
+description = "A lightweight Python library for building interruptible, generator-driven ETL pipelines as directed graphs."
+authors = [
+    {name = "j4ggr", email = "reto@jaeggli.email"},
+]
+dependencies = []
+requires-python = ">=3.14"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.3",
+]
