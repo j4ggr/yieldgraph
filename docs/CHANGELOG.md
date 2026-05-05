@@ -7,13 +7,42 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ---
 
 - [Changelog](#changelog)
-  - [0.2.0 — 2026-05-05](#020--2026-05-05)
+  - [0.3.0 — 2026-05-05](#030--2026-05-05)
     - [Added](#added)
+  - [0.2.0 — 2026-05-05](#020--2026-05-05)
+    - [Added](#added-1)
     - [Changed](#changed)
   - [0.1.0 — 2026-05-04](#010--2026-05-04)
-    - [Added](#added-1)
+    - [Added](#added-2)
     - [Changed](#changed-1)
     - [Fixed](#fixed)
+
+## [0.3.0] — 2026-05-05
+
+### Added
+
+**`GraphObserver` — push-model callback interface** (`db61b14`)
+
+- New `GraphObserver` base class in `graph.py` with four no-op methods:
+  - `on_run_start(total_nodes)` — fired once before the first node starts.
+  - `on_node_start(node_name, step, node_index, total_nodes)` — fired just
+    before each node begins processing.
+  - `on_node_end(node_name, step, node_index, total_nodes)` — fired just after
+    each node finishes.
+  - `on_run_end(succeeded, error)` — fired once after the entire run completes.
+- `Graph.observer` attribute (`None` by default). Assign any `GraphObserver`
+  subclass instance before calling `run()` to receive callbacks.
+- Observer callbacks are wired into `_reset`, `_run_sequential`,
+  `_run_threaded`, and `run()`. In threaded mode, node name and index are
+  captured via default arguments so each thread reports correctly.
+- `GraphObserver` exported from `graph.__all__` and the top-level package
+  `__init__`.
+- 16 new tests in `TestGraphObserver` (`test_graph.py`) covering callback
+  order, correct arguments, threaded mode, and base-class no-ops (`7816dc5`).
+- "Observer (push model)" subsection added to *Patterns & Recipes* guide with
+  a full `LogObserver` example and a thread-safety note (`7816dc5`).
+
+---
 
 ## [0.2.0] — 2026-05-05
 
@@ -175,5 +204,6 @@ restructured as an installable package under `src/yieldgraph/`.
 
 ---
 
+[0.3.0]: https://github.com/j4ggr/yieldgraph/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/j4ggr/yieldgraph/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/j4ggr/yieldgraph/releases/tag/v0.1.0
