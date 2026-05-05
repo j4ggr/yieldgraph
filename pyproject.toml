@@ -1,12 +1,12 @@
 [project]
 name = "yieldgraph"
-version = "0.3.0"
+version = "0.3.1"
 description = "A lightweight Python library for building interruptible, generator-driven ETL pipelines as directed graphs."
 authors = [
     {name = "j4ggr", email = "reto@jaeggli.email"},
 ]
 dependencies = []
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 readme = "README.md"
 license = {text = "MIT"}
 
