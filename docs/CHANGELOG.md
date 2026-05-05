@@ -7,10 +7,79 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ---
 
 - [Changelog](#changelog)
-  - [0.1.0 — 2026-05-04](#010--2026-05-04)
+  - [0.2.0 — 2026-05-05](#020--2026-05-05)
     - [Added](#added)
     - [Changed](#changed)
+  - [0.1.0 — 2026-05-04](#010--2026-05-04)
+    - [Added](#added-1)
+    - [Changed](#changed-1)
     - [Fixed](#fixed)
+
+## [0.2.0] — 2026-05-05
+
+### Added
+
+**`ENV` — live boolean properties** (`8d3c2de`, `201a3a7`)
+
+- `ENV.THREADED` — boolean property; `True` when `YIELDGRAPH_THREADED` is set
+  to a truthy value (`1`, `true`, `yes`). Evaluated at call time, so changes to
+  `os.environ` are reflected immediately (important for tests).
+- `ENV.LOG_TRACEBACK` — boolean property replacing the removed `LOG.TRACEBACK`
+  field; reads `YIELDGRAPH_LOG_TRACEBACK` at access time.
+- `ENV.LOG_DISABLED` — new boolean property; set `YIELDGRAPH_LOG_DISABLED=1` to
+  suppress all library logging output. When `True`, `LoggingBehavior.log()`
+  returns immediately without emitting anything.
+- `ENV.THREADED_KEY`, `ENV.LOG_TRACEBACK_KEY`, `ENV.LOG_DISABLED_KEY` — class
+  attributes exposing raw key strings for direct `os.environ` manipulation
+  (e.g. in tests).
+- `ENV.TRUEISH_VALUES` — tuple `('1', 'true', 'yes')` centralising the
+  truthy-string logic used by all three properties.
+- `LOG.__getitem__` — dictionary-style level lookup: `LOG['DEBUG']` → `10`,
+  `LOG['TRACE']` → `5`. Raises `KeyError` for unknown names.
+- `LOG.__call__` — reverse lookup by integer: `LOG(10)` → `'DEBUG'`.
+  Raises `KeyError` for unknown numbers.
+- `LOG.*_LEVEL` numeric constants — `LOG.TRACE_LEVEL` (5), `LOG.DEBUG_LEVEL`
+  (10), `LOG.INFO_LEVEL` (20), `LOG.WARNING_LEVEL` (30), `LOG.ERROR_LEVEL`
+  (40), `LOG.CRITICAL_LEVEL` (50).
+
+**Documentation** (`70a07f5`)
+
+- `node.py` module docstring: `.. warning::` block documenting that `async def`
+  generators silently produce zero output and `async def` plain functions yield
+  the coroutine object as a value. Points to threaded mode as the correct
+  alternative for I/O concurrency.
+- `job.py` module docstring: `.. note::` listing supported callable types and
+  the two distinct async failure modes.
+- *Patterns & Recipes* guide: new **"Async / asyncio — not supported"** section
+  explaining both failure modes with code-level detail, the recommended
+  `YIELDGRAPH_THREADED=1` workaround, and an `asyncio.run_in_executor` hint for
+  callers already inside an event loop.
+
+### Changed
+
+- `_ENV_` converted from a `@dataclass(frozen=True)` of string constants to a
+  plain class with `@property` accessors. All properties read `os.environ` on
+  every access.
+- `LOG.TRACEBACK` field removed; use `ENV.LOG_TRACEBACK` instead.
+- `Graph._reset()`: `self._threaded = ENV.THREADED` replaces the inline
+  `os.environ.get(…).lower() in (…)` expression.
+- `node.py`: `LOG.TRACEBACK` → `ENV.LOG_TRACEBACK`; removed now-unused `LOG`
+  import.
+- `LoggingBehavior.log()` gains an early-return guard: `if ENV.LOG_DISABLED: return`.
+- `LoggingBehavior.name_to_level()` removed; level resolution now done via
+  `LOG.__getitem__`.
+- `test_config.py` rewritten: dropped `TestNameToLevel`; added `TestLogGetItem`,
+  `TestLogCall`, `TestENV` (all three properties, truthy/falsy, runtime changes),
+  and `TestLoggingBehavior.test_log_disabled_silences_all_output`.
+  Test count: 27 → 43.
+- `test_graph.py`: `os.environ[ENV.THREADED]` → `os.environ[ENV.THREADED_KEY]`
+  throughout.
+- All stale `THREADED_ENV_VAR` and `LOG.TRACEBACK` cross-references removed from
+  docstrings in `config.py`, `graph.py`, and `docs/guides/configuration.md`.
+- *Configuration* guide `ENV` section rewritten to describe properties and key
+  constants; added quick-reference table.
+
+---
 
 ## [0.1.0] — 2026-05-04
 
@@ -106,4 +175,5 @@ restructured as an installable package under `src/yieldgraph/`.
 
 ---
 
+[0.2.0]: https://github.com/j4ggr/yieldgraph/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/j4ggr/yieldgraph/releases/tag/v0.1.0
