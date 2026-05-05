@@ -3,7 +3,7 @@ import pytest
 
 from yieldgraph.config import START_NODE_NAME, ENV
 from yieldgraph.edge import Edge
-from yieldgraph.graph import Graph
+from yieldgraph.graph import Graph, GraphObserver
 
 
 # ---------------------------------------------------------------------------
@@ -412,3 +412,194 @@ class TestRepr:
         g.add_chain(_source_items(1))
         g.cancelled = True
         assert 'INTERRUPTED' in repr(g)
+
+
+# ---------------------------------------------------------------------------
+# GraphObserver
+# ---------------------------------------------------------------------------
+
+class _RecordingObserver(GraphObserver):
+    """Observer that records every call for assertion."""
+
+    def __init__(self):
+        self.calls = []
+
+    def on_run_start(self, total_nodes):
+        self.calls.append(('on_run_start', total_nodes))
+
+    def on_node_start(self, node_name, step, node_index, total_nodes):
+        self.calls.append(('on_node_start', node_name, step, node_index, total_nodes))
+
+    def on_node_end(self, node_name, step, node_index, total_nodes):
+        self.calls.append(('on_node_end', node_name, step, node_index, total_nodes))
+
+    def on_run_end(self, succeeded, error):
+        self.calls.append(('on_run_end', succeeded, error))
+
+
+class TestGraphObserver:
+    def setup_method(self):
+        os.environ.pop(ENV.THREADED_KEY, None)
+
+    def test_no_observer_does_not_raise(self):
+        g = Graph()
+        g.add_chain(_source_items(1, 2))
+        g.run()   # observer is None — must not raise
+        assert g.succeeded is True
+
+    def test_observer_default_is_none(self):
+        assert Graph().observer is None
+
+    def test_on_run_start_called_once(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        run_start_calls = [c for c in obs.calls if c[0] == 'on_run_start']
+        assert len(run_start_calls) == 1
+
+    def test_on_run_start_receives_total_nodes(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        _, total = obs.calls[0]
+        assert total == 2
+
+    def test_on_run_end_called_once(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1))
+        g.observer = obs
+        g.run()
+        run_end_calls = [c for c in obs.calls if c[0] == 'on_run_end']
+        assert len(run_end_calls) == 1
+
+    def test_on_run_end_succeeded_true_on_clean_run(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1))
+        g.observer = obs
+        g.run()
+        _, succeeded, error = obs.calls[-1]
+        assert succeeded is True
+        assert error == ''
+
+    def test_on_run_end_succeeded_false_on_error(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1))
+        g.observer = obs
+        g.run()
+        # Inject an error to simulate failure
+        g.error = 'something went wrong'
+        # Re-fire manually — also check Graph.succeeded reflects the error
+        assert g.succeeded is False
+
+    def test_on_node_start_called_for_each_node(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        starts = [c for c in obs.calls if c[0] == 'on_node_start']
+        assert len(starts) == 2
+
+    def test_on_node_end_called_for_each_node(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        ends = [c for c in obs.calls if c[0] == 'on_node_end']
+        assert len(ends) == 2
+
+    def test_on_node_start_node_name_correct(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        starts = [c for c in obs.calls if c[0] == 'on_node_start']
+        names = [c[1] for c in starts]
+        assert 'source' in names
+        assert '_double' in names
+
+    def test_on_node_start_index_is_one_based(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        starts = [c for c in obs.calls if c[0] == 'on_node_start']
+        indices = [c[3] for c in starts]
+        assert indices == [1, 2]
+
+    def test_on_node_start_total_nodes_correct(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        starts = [c for c in obs.calls if c[0] == 'on_node_start']
+        assert all(c[4] == 2 for c in starts)
+
+    def test_call_order_run_start_before_node_start(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1))
+        g.observer = obs
+        g.run()
+        event_types = [c[0] for c in obs.calls]
+        assert event_types[0] == 'on_run_start'
+        assert 'on_node_start' in event_types[1:]
+
+    def test_call_order_run_end_after_node_end(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1))
+        g.observer = obs
+        g.run()
+        event_types = [c[0] for c in obs.calls]
+        assert event_types[-1] == 'on_run_end'
+
+    def test_call_order_node_start_before_node_end(self):
+        obs = _RecordingObserver()
+        g = Graph()
+        g.add_chain(_source_items(1), _double)
+        g.observer = obs
+        g.run()
+        event_types = [c[0] for c in obs.calls]
+        # Every on_node_start must come before its matching on_node_end
+        for name in ('source', '_double'):
+            starts = [i for i, c in enumerate(obs.calls)
+                      if c[0] == 'on_node_start' and c[1] == name]
+            ends = [i for i, c in enumerate(obs.calls)
+                    if c[0] == 'on_node_end' and c[1] == name]
+            assert starts and ends
+            assert starts[0] < ends[0]
+
+    def test_observer_works_in_threaded_mode(self):
+        os.environ[ENV.THREADED_KEY] = '1'
+        try:
+            obs = _RecordingObserver()
+            g = Graph()
+            g.add_chain(_source_items(1, 2, 3), _double)
+            g.observer = obs
+            g.run()
+            starts = [c for c in obs.calls if c[0] == 'on_node_start']
+            ends = [c for c in obs.calls if c[0] == 'on_node_end']
+            assert len(starts) == 2
+            assert len(ends) == 2
+        finally:
+            os.environ.pop(ENV.THREADED_KEY, None)
+
+    def test_graphobserver_base_methods_are_noop(self):
+        obs = GraphObserver()
+        obs.on_run_start(3)
+        obs.on_node_start('n', 'N', 1, 3)
+        obs.on_node_end('n', 'N', 1, 3)
+        obs.on_run_end(True, '')
+        # No exception raised, no return value

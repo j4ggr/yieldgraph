@@ -237,6 +237,45 @@ The `Graph` itself provides aggregated progress helpers:
 | `g.progress` | `int` | `int(100 * current_node.progress)` |
 | `g.finished` | `bool` | `True` once `run()` has returned |
 
+### Observer (push model)
+
+Instead of polling in a loop you can attach a :class:`~yieldgraph.graph.GraphObserver`
+to receive callbacks at the start and end of each node and after the whole run:
+
+```python
+from yieldgraph import Graph, GraphObserver
+
+class LogObserver(GraphObserver):
+    def on_run_start(self, total_nodes):
+        print(f"Starting pipeline ({total_nodes} nodes)")
+
+    def on_node_start(self, node_name, step, node_index, total_nodes):
+        print(f"  [{node_index}/{total_nodes}] {step} …")
+
+    def on_node_end(self, node_name, step, node_index, total_nodes):
+        print(f"  [{node_index}/{total_nodes}] {step} done")
+
+    def on_run_end(self, succeeded, error):
+        if succeeded:
+            print("Pipeline finished successfully")
+        else:
+            print(f"Pipeline failed: {error}")
+
+g = Graph()
+g.add_chain(source, transform, load)
+g.observer = LogObserver()
+g.run()
+```
+
+Subclass `GraphObserver` and override **only the methods you need** — every
+method has a no-op default, so partial implementations are safe.
+
+!!! note "Thread safety"
+    In threaded mode (`YIELDGRAPH_THREADED=1`), `on_node_start` and
+    `on_node_end` are called from worker threads.  If your observer
+    touches shared state (e.g. a GUI widget, a database connection), protect
+    it with a lock or dispatch to the main thread.
+
 ### Polling example
 
 ```python
