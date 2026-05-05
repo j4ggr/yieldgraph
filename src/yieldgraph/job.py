@@ -12,6 +12,23 @@ can be used and tested independently:
 - :func:`_wrap` — decorates a generator function with a cancellation
   check between every yielded value.
 
+.. note:: Supported callable types
+
+    :class:`Job` accepts:
+
+    - Plain functions (single return value, wrapped automatically).
+    - Generator functions (``def`` + ``yield``).
+
+    **Not supported:** ``async def`` functions and async generators
+    (``async def`` + ``yield``).  :func:`_as_generator` wraps the
+    callable in a synchronous generator, so awaiting a coroutine is
+    never possible.  Passing an async callable will result in the
+    coroutine object being yielded as a value rather than executed,
+    which will propagate as unexpected output or a type error in the
+    downstream node.  Use threaded execution
+    (:attr:`~yieldgraph.config._ENV_.THREADED`) for I/O-bound
+    concurrency instead.
+
 Typical usage
 -------------
 Plain function (single result):

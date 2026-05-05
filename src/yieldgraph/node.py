@@ -11,6 +11,21 @@ iterate over nodes in order.
 The module-level helper :func:`_ensure_tuple` is kept separate from the
 class so it can be used and tested independently.
 
+.. warning:: Async job functions are not supported
+
+    Job callables must be ordinary (synchronous) functions or generator
+    functions.  Passing an ``async def`` function or an async generator
+    (``async def`` + ``yield``) will **not** work: the inner loop in
+    :meth:`Node._run_one` uses a plain ``for`` statement, which cannot
+    iterate over an :class:`~collections.abc.AsyncGenerator`.  The
+    error will be caught silently, logged as a node warning, and the
+    node will produce zero output.
+
+    If you need I/O concurrency, enable threaded execution via
+    :attr:`~yieldgraph.config._ENV_.THREADED` — each node runs in its
+    own thread, so blocking I/O calls (network, disk) are fine inside
+    a regular generator.
+
 Typical usage
 -------------
 

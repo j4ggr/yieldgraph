@@ -397,3 +397,58 @@ g2 = Graph()
 g2.add_chain(filter_new, enrich, save)
 g2.run()
 ```
+
+---
+
+## Async / `asyncio` — not supported
+
+yieldgraph job functions must be **synchronous**. `async def` functions
+and async generators (`async def` + `yield`) are not supported.
+
+### Why
+
+The inner execution loop in `Node._run_one` uses a plain `for` statement
+to iterate over each job's output:
+
+```python
+for output in self._job(*job_data):   # plain for — cannot drive an AsyncGenerator
+    ...
+```
+
+Passing an `async def` generator here means the `for` loop never calls
+`__anext__`, so the coroutine is never scheduled and the node produces
+zero output (the error is caught, logged as a node warning, and
+execution continues).
+
+Passing a plain `async def` function (non-generator) is worse: `_as_generator`
+wraps it in a sync generator that *returns* the coroutine object as a
+value — it is never awaited, and that object propagates as unexpected
+output to the next node.
+
+### What to do instead
+
+For **I/O-bound concurrency** (network calls, database queries, file I/O),
+enable threaded execution. Each node runs in its own thread, so blocking
+I/O inside a regular generator is fine and gives you the same throughput
+benefit as `asyncio`:
+
+```python
+import os, requests
+os.environ["YIELDGRAPH_THREADED"] = "1"
+
+def fetch_url(url):          # plain sync generator — fine in threaded mode
+    response = requests.get(url, timeout=10)
+    yield response.json()
+
+g = Graph()
+g.add_chain(source_urls, fetch_url, parse_response)
+g.run()
+```
+
+If you are already inside an `asyncio` event loop and need to call
+`g.run()`, wrap it in `asyncio.get_event_loop().run_in_executor(None,
+g.run)` to avoid blocking the loop.
+
+!!! warning
+    There are no plans to add a native `Graph.run_async()` at this time.
+    If you have a concrete use-case, please open an issue.
