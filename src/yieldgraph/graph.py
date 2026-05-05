@@ -140,10 +140,10 @@ class Graph(LoggingBehavior):
     _threaded: bool
     """``True`` when the graph runs nodes as concurrent threads.
 
-    Set automatically from the
-    :data:`~yieldgraph.config.THREADED_ENV_VAR` environment variable at
-    the start of each :meth:`run`. Override by setting the variable
-    before the run::
+    Set automatically from :attr:`~yieldgraph.config._ENV_.THREADED`
+    (i.e. the ``YIELDGRAPH_THREADED`` environment variable) at the start
+    of each :meth:`run`. Override by setting the variable before the
+    run::
 
         YIELDGRAPH_THREADED=1 python my_pipeline.py
     """
@@ -328,10 +328,10 @@ class Graph(LoggingBehavior):
     def run(self) -> None:
         """Execute all nodes — sequentially or in parallel threads.
 
-        Reads :data:`~yieldgraph.config.THREADED_ENV_VAR` from the
-        environment to decide the execution mode, then delegates to
-        :meth:`_run_sequential` or :meth:`_run_threaded`.  Sets
-        :attr:`finished` to ``True`` when done regardless of outcome.
+        Reads :attr:`ENV.THREADED` to decide the execution mode, then
+        delegates to :meth:`_run_sequential` or :meth:`_run_threaded`.
+        Sets :attr:`finished` to ``True`` when done regardless of
+        outcome.
 
         Raises
         ------
@@ -442,15 +442,15 @@ class Graph(LoggingBehavior):
     def _reset(self) -> None:
         """Prepare the graph for a new run.
 
-        Reads :data:`~yieldgraph.config.THREADED_ENV_VAR` to set
-        :attr:`_threaded`, clears cached outputs and flags, aligns node
-        column widths, and sets the current-node cursor.
+        Reads :attr:`ENV.THREADED` to set :attr:`_threaded`, clears
+        cached outputs and flags, aligns node column widths, and sets
+        the current-node cursor.
         """
         self._output = []
         self.finished = False
         self.error = ''
         self.cancelled = False
-        self._threaded = os.environ.get(ENV.THREADED, '').lower() in ('1', 'true', 'yes')
+        self._threaded = ENV.THREADED
         self._adjust_col_widths()
         self._current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
         mode = 'threaded' if self._threaded else 'sequential'

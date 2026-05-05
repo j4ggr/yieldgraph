@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from yieldgraph.config import LOG, LoggingBehavior, START_NODE_NAME
+from yieldgraph.config import LOG, ENV, LoggingBehavior, START_NODE_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -20,9 +20,6 @@ class TestLog:
 
     def test_trace_level_num(self):
         assert LOG.TRACE_LEVEL_NUM == 5
-
-    def test_traceback_is_bool(self):
-        assert isinstance(LOG.TRACEBACK, bool)
 
     def test_log_is_frozen(self):
         with pytest.raises(Exception):

@@ -1,18 +1,20 @@
 """Configuration module for the `yieldgraph` library.
 
-This module defines constants and classes related to logging behavior in 
-the `yieldgraph` library. It includes the `LOG` instance of the `_Log_` 
-class, which contains log level constants and configuration for logging 
-behavior, as well as the :class:`LoggingBehavior` mixin class that 
-provides logging capabilities to classes that inherit from it.
+This module defines constants and classes related to environment
+configuration and logging behavior in the `yieldgraph` library. It
+includes the :data:`ENV` instance of :class:`_ENV_`, which exposes the
+current values of environment variables as boolean properties; the
+:data:`LOG` instance of :class:`_Log_`, which contains log level
+constants; and the :class:`LoggingBehavior` mixin class that provides
+logging capabilities to classes that inherit from it.
 
 The `LoggingBehavior` class defines a :attr:`logger` attribute that can 
 be used by classes that inherit from it to log messages at various log 
 levels. The log levels are defined in the `LOG` instance, and include 
-TRACE, DEBUG, INFO, WARNING, ERROR, and CRITICAL. The `LOG` instance 
-also contains a flag for whether to include traceback information in log
-messages. This can be set using the `YIELDGRAPH_LOG_TRACEBACK` 
-environment variable.
+TRACE, DEBUG, INFO, WARNING, ERROR, and CRITICAL. Whether traceback 
+information is included in error log messages is controlled by the 
+``YIELDGRAPH_LOG_TRACEBACK`` environment variable via 
+:attr:`ENV.LOG_TRACEBACK`.
 
 The `LoggingBehavior` class provides a :attr:`log_title` property that
 can be overridden by classes that inherit from it to provide a custom 
@@ -46,70 +48,75 @@ __all__ = [
 START_NODE_NAME = '__START__'
 """Sentinel name for the implicit start node that seeds pipeline chains."""
 
-@dataclass(frozen=True)
 class _ENV_:
-    """Class containing environment variable names for configuration of the
-    `yieldgraph` library. This class defines constants for environment 
-    variable names that can be used to configure the behavior of the 
-    library, such as enabling threaded execution or configuring logging 
-    behavior. By using this class, you can centralize the management of 
-    environment variable names and avoid hardcoding them throughout the 
-    codebase."""
-    THREADED: Literal['YIELDGRAPH_THREADED'] = 'YIELDGRAPH_THREADED'
-    """Name of the environment variable that enables threaded execution.
+    """Class providing runtime values of environment variables used to
+    configure the `yieldgraph` library. Properties are evaluated at
+    access time, so changes to environment variables are always
+    reflected immediately without reloading the module."""
 
-    Set this variable to ``'1'``, ``'true'``, or ``'yes'`` (case-insensitive)
-    before running a :class:`~yieldgraph.graph.Graph` to execute all nodes
-    concurrently in separate threads instead of sequentially.
+    THREADED_KEY: str = 'YIELDGRAPH_THREADED'
+    """Name of the environment variable that enables threaded execution."""
 
-    Examples
-    --------
-    ```bash
-    YIELDGRAPH_THREADED=1 python my_pipeline.py
-    ```
-    or in Python:
-    ```python
-    import os
-    os.environ['YIELDGRAPH_THREADED'] = '1'
-    g = Graph()
-    g.add_chain(extract, transform, load)
-    g.run()
-    ```
-    """
-    LOG_TRACEBACK: Literal['YIELDGRAPH_LOG_TRACEBACK'] = 'YIELDGRAPH_LOG_TRACEBACK'
-    """Name of the environment variable that configures whether to 
-    include traceback information in log messages when an exception is 
-    logged. Set this variable to ``'1'``, ``'true'``, or ``'yes'`` 
-    (case-insensitive) to include traceback information in log messages 
-    when an exception is logged. By default, this variable is set to a 
-    falsy value, so traceback information will not be included in the 
-    log output.
-    """
+    LOG_TRACEBACK_KEY: str = 'YIELDGRAPH_LOG_TRACEBACK'
+    """Name of the environment variable that configures traceback logging."""
+
+    @property
+    def THREADED(self) -> bool:
+        """Whether threaded execution is currently enabled.
+
+        Returns ``True`` if the ``YIELDGRAPH_THREADED`` environment
+        variable is set to ``'1'``, ``'true'``, or ``'yes'``
+        (case-insensitive), ``False`` otherwise.
+
+        Examples
+        --------
+        ```bash
+        YIELDGRAPH_THREADED=1 python my_pipeline.py
+        ```
+        or in Python:
+        ```python
+        import os
+        os.environ['YIELDGRAPH_THREADED'] = '1'
+        g = Graph()
+        g.add_chain(extract, transform, load)
+        g.run()
+        ```
+        """
+        return os.environ.get(self.THREADED_KEY, '').lower() in ('1', 'true', 'yes')
+
+    @property
+    def LOG_TRACEBACK(self) -> bool:
+        """Whether traceback information is included in log messages.
+
+        Returns ``True`` if the ``YIELDGRAPH_LOG_TRACEBACK`` environment
+        variable is set to ``'1'``, ``'true'``, or ``'yes'``
+        (case-insensitive), ``False`` otherwise.
+        """
+        return os.environ.get(self.LOG_TRACEBACK_KEY, '').lower() in ('1', 'true', 'yes')
 
 ENV = _ENV_()
-"""Instance of the `_ENV_` class containing environment variable names 
-for configuration of the `yieldgraph` library.
+"""Instance of :class:`_ENV_` that provides the current values of
+environment variables used to configure the `yieldgraph` library.
 
-This instance can be used throughout the `yieldgraph` library to access
-the names of environment variables that can be used to configure the
-behavior of the library, such as `ENV.THREADED` for enabling threaded
-execution and `ENV.LOG_TRACEBACK` for configuring logging behavior 
-related to exception tracebacks. By using this instance, you can avoid 
-hardcoding environment variable names throughout the codebase.
+Properties are evaluated at access time, so changes to environment
+variables are immediately reflected. Use :attr:`~_ENV_.THREADED_KEY` and
+:attr:`~_ENV_.LOG_TRACEBACK_KEY` to access the raw key names when
+manipulating ``os.environ`` directly (e.g., in tests).
 """
 
 @dataclass(frozen=True)
 class _Log_:
-    """Class containing log level constants and configuration for 
-    logging behavior. This class defines constants for various log 
-    levels (e.g., TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL) and a 
-    flag for whether to include traceback information in log messages.
+    """Class containing log level constants for logging behavior. This
+    class defines constants for the log levels TRACE, DEBUG, INFO,
+    WARNING, ERROR, and CRITICAL, as well as the custom
+    :attr:`TRACE_LEVEL_NUM` integer.
     
     Notes
     -----
     - Use the `LOG` instance of this class to access the log level 
-    constants and configuration for logging behavior throughout the 
-    `yieldgraph` library."""
+    constants throughout the `yieldgraph` library.
+    - Use :attr:`ENV.LOG_TRACEBACK` to check whether traceback output
+    is enabled."""
     TRACE: Literal['TRACE'] = 'TRACE'
     """Log level for trace messages."""
     DEBUG: Literal['DEBUG'] = 'DEBUG'
@@ -122,15 +129,6 @@ class _Log_:
     """Log level for error messages."""
     CRITICAL: Literal['CRITICAL'] = 'CRITICAL'
     """Log level for critical messages."""
-    TRACEBACK: bool = os.getenv(
-        ENV.LOG_TRACEBACK, 'False').lower() in ('true', '1', 't')
-    """Flag indicating whether to include traceback information in log
-    messages when an exception is logged. This can be set using the
-    `YIELDGRAPH_LOG_TRACEBACK` environment variable. If the variable is 
-    set to a truthy value (e.g., 'True', '1', 't'), traceback 
-    information will be included in the log output when an exception is 
-    logged. If the variable is not set or is set to a falsy value, 
-    traceback information will not be included in the log output."""
     TRACE_LEVEL_NUM: Literal[5] = 5
     """Custom log level number for TRACE level. This is set to 5, which is
     lower than the standard DEBUG level (10) to allow for more fine-grained
@@ -142,9 +140,9 @@ LOG = _Log_()
 configuration for logging behavior.
 
 This instance can be used throughout the `yieldgraph` library to access
-log level constants (e.g., `LOG.DEBUG`, `LOG.INFO`, etc.) and to check
-the `LOG.TRACEBACK` flag when logging exceptions to determine whether
-to include traceback information in the log output.
+log level constants (e.g., `LOG.DEBUG`, `LOG.INFO`, etc.). Use
+:attr:`ENV.LOG_TRACEBACK` to check whether traceback information should
+be included in log output.
 """
 
 try:

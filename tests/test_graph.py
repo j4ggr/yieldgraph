@@ -161,7 +161,7 @@ class TestAddChain:
 
 class TestRunSequential:
     def setup_method(self):
-        os.environ.pop(ENV.THREADED, None)
+        os.environ.pop(ENV.THREADED_KEY, None)
 
     def test_finished_true_after_run(self):
         g = Graph()
@@ -271,10 +271,10 @@ class TestRunSequential:
 
 class TestRunThreaded:
     def setup_method(self):
-        os.environ[ENV.THREADED] = '1'
+        os.environ[ENV.THREADED_KEY] = '1'
 
     def teardown_method(self):
-        os.environ.pop(ENV.THREADED, None)
+        os.environ.pop(ENV.THREADED_KEY, None)
 
     def test_threaded_flag_set_after_reset(self):
         g = Graph()
@@ -313,7 +313,7 @@ class TestRunThreaded:
 
 class TestPropertiesPostRun:
     def setup_method(self):
-        os.environ.pop(ENV.THREADED, None)
+        os.environ.pop(ENV.THREADED_KEY, None)
 
     def test_succeeded_true_on_success(self):
         g = Graph()
@@ -368,7 +368,7 @@ class TestNodeLabel:
 
 class TestAdjustColWidths:
     def setup_method(self):
-        os.environ.pop(ENV.THREADED, None)
+        os.environ.pop(ENV.THREADED_KEY, None)
 
     def test_col_width_set_to_longest_name(self):
         g = Graph()
@@ -388,7 +388,7 @@ class TestAdjustColWidths:
 
 class TestRepr:
     def setup_method(self):
-        os.environ.pop(ENV.THREADED, None)
+        os.environ.pop(ENV.THREADED_KEY, None)
 
     def test_repr_contains_start(self):
         g = Graph()

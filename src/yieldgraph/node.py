@@ -39,7 +39,7 @@ from typing import List
 from typing import Tuple
 from typing import Callable
 
-from .config import LOG
+from .config import ENV
 from .config import LoggingBehavior
 from .config import START_NODE_NAME
 from .edge import Edge
@@ -376,7 +376,7 @@ class Node(LoggingBehavior):
         except Exception as e:
             self.log_warning(
                 f'Caught error = {e}\nError occurred @ node {repr(self)}')
-            if LOG.TRACEBACK:
+            if ENV.LOG_TRACEBACK:
                 self.log_exception(traceback.format_exc(), e)
             self.errors.append(e)
 

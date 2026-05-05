@@ -79,7 +79,7 @@ yieldgraph uses Python's standard `logging` module by default, with an additiona
 | `DEBUG` | 10 | Node additions, initial inputs, edge wiring |
 | `INFO` | 20 | Job counts, overall pipeline completion summary |
 | `WARNING` | 30 | Caught node errors, cancellation notices |
-| `ERROR` | 40 | Detailed error messages, tracebacks (when `LOG_TRACEBACK` is on) |
+| `ERROR` | 40 | Detailed error messages, tracebacks (when `ENV.LOG_TRACEBACK` is on) |
 | `CRITICAL` | 50 | (Reserved for future use) |
 
 ### Configuring the standard logger
@@ -161,25 +161,26 @@ class MyPipelineStep(LoggingBehavior):
 
 ## `ENV` constants
 
-The `ENV` object exposes the environment variable names as typed constants so you can reference them in code without hardcoding strings:
+The `ENV` object exposes the current values of environment variables as
+boolean properties, evaluated at access time:
 
 ```python
 from yieldgraph import ENV
 import os
 
 # Check whether threaded mode is active
-if os.getenv(ENV.THREADED):
+if ENV.THREADED:
     print("Running in threaded mode")
 
 # Toggle at runtime (must be set before g.run())
-os.environ[ENV.THREADED] = "1"
-os.environ[ENV.LOG_TRACEBACK] = "1"
+os.environ[ENV.THREADED_KEY] = "1"
+os.environ[ENV.LOG_TRACEBACK_KEY] = "1"
 ```
 
-| Constant | Value |
-|---|---|
-| `ENV.THREADED` | `"YIELDGRAPH_THREADED"` |
-| `ENV.LOG_TRACEBACK` | `"YIELDGRAPH_LOG_TRACEBACK"` |
+| Property | Key constant | Description |
+|---|---|---|
+| `ENV.THREADED` | `ENV.THREADED_KEY` | `True` when `YIELDGRAPH_THREADED` is set |
+| `ENV.LOG_TRACEBACK` | `ENV.LOG_TRACEBACK_KEY` | `True` when `YIELDGRAPH_LOG_TRACEBACK` is set |
 
 ---
 
@@ -188,7 +189,7 @@ os.environ[ENV.LOG_TRACEBACK] = "1"
 The `LOG` object provides typed constants for all log levels:
 
 ```python
-from yieldgraph import LOG
+from yieldgraph import LOG, ENV
 
 print(LOG.TRACE)    # 'TRACE'
 print(LOG.DEBUG)    # 'DEBUG'
@@ -197,7 +198,7 @@ print(LOG.WARNING)  # 'WARNING'
 print(LOG.ERROR)    # 'ERROR'
 print(LOG.CRITICAL) # 'CRITICAL'
 
-print(LOG.TRACEBACK)        # bool — reflects YIELDGRAPH_LOG_TRACEBACK
+print(ENV.LOG_TRACEBACK)    # bool — reflects YIELDGRAPH_LOG_TRACEBACK
 print(LOG.TRACE_LEVEL_NUM)  # 5
 ```
 
