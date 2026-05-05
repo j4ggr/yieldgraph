@@ -29,7 +29,6 @@ print(g.output)   # → [(2,), (4,), (6,)]
 ```
 """
 
-import os
 import threading
 
 from collections import defaultdict
@@ -41,12 +40,105 @@ from typing import Dict
 from typing import List
 from typing import Tuple
 
-from .config import LOG
 from .config import ENV
 from .config import LoggingBehavior
 from .config import START_NODE_NAME
+
 from .edge import Edge
 from .node import Node
+
+
+class GraphObserver:
+    """Base class for observing :class:`Graph` execution events.
+
+    Subclass and override only the methods you need.  Every method has a
+    no-op default, so partial implementations are safe.
+
+    .. note::
+        In threaded mode (``YIELDGRAPH_THREADED=1``),
+        :meth:`on_node_start` and :meth:`on_node_end` are called from
+        worker threads.  Ensure your implementation is thread-safe if it
+        touches shared state.
+
+    Examples
+    --------
+    ```python
+    from yieldgraph import Graph, GraphObserver
+
+    class PrintObserver(GraphObserver):
+        def on_node_start(self, node_name, step, node_index, total_nodes):
+            print(f'[{node_index}/{total_nodes}] {step} …')
+
+        def on_run_end(self, succeeded, error):
+            print('Done!' if succeeded else f'Failed: {error}')
+
+    g = Graph()
+    g.add_chain(source, transform, load)
+    g.observer = PrintObserver()
+    g.run()
+    ```
+    """
+
+    def on_run_start(self, total_nodes: int) -> None:
+        """Called once before the first node starts.
+
+        Parameters
+        ----------
+        total_nodes : int
+            Total number of nodes in the graph.
+        """
+
+    def on_node_start(
+            self,
+            node_name: str,
+            step: str,
+            node_index: int,
+            total_nodes: int) -> None:
+        """Called immediately before a node begins processing.
+
+        Parameters
+        ----------
+        node_name : str
+            Internal name of the node (the job function's ``__name__``).
+        step : str
+            Human-readable label (see :attr:`~yieldgraph.graph.Graph.step`).
+        node_index : int
+            1-based position of this node in the graph.
+        total_nodes : int
+            Total number of nodes in the graph.
+        """
+
+    def on_node_end(
+            self,
+            node_name: str,
+            step: str,
+            node_index: int,
+            total_nodes: int) -> None:
+        """Called immediately after a node finishes processing.
+
+        Parameters
+        ----------
+        node_name : str
+            Internal name of the node.
+        step : str
+            Human-readable label for the node.
+        node_index : int
+            1-based position of this node in the graph.
+        total_nodes : int
+            Total number of nodes in the graph.
+        """
+
+    def on_run_end(self, succeeded: bool, error: str) -> None:
+        """Called once after the entire run completes.
+
+        Parameters
+        ----------
+        succeeded : bool
+            ``True`` when the run finished without errors.
+        error : str
+            Non-empty error description if the run failed; empty string
+            on success.
+        """
 
 
 class Graph(LoggingBehavior):
@@ -78,6 +170,11 @@ class Graph(LoggingBehavior):
         Non-empty string describing the first error that halted the run.
     labels : dict[str, str]
         Optional display labels keyed by node name, used by :attr:`step`.
+    observer : GraphObserver or None
+        Optional observer that receives callbacks at the start and end of
+        each node and at the start and end of the whole run.  Assign any
+        :class:`GraphObserver` subclass instance before calling
+        :meth:`run`.
     """
 
     # --- public state -------------------------------------------------
@@ -125,6 +222,17 @@ class Graph(LoggingBehavior):
     absent the label is derived automatically by uppercasing each 
     ``_``-separated token."""
 
+    observer: 'GraphObserver | None'
+    """Optional :class:`GraphObserver` instance.
+
+    Assign before calling :meth:`run` to receive push callbacks at the
+    start/end of each node and at the start/end of the whole run::
+
+        g.observer = MyObserver()
+        g.run()
+
+    ``None`` by default (no callbacks fired)."""
+
     # --- private state ------------------------------------------------
 
     _output: List[Tuple[Any, ...]]
@@ -164,6 +272,7 @@ class Graph(LoggingBehavior):
         self.finished = False
         self.error = ''
         self.labels = {}
+        self.observer: GraphObserver | None = None
 
     # ------------------------------------------------------------------
     # Properties
@@ -240,10 +349,21 @@ class Graph(LoggingBehavior):
         return label
 
     @property
-    def progress(self) -> int:
-        """Progress of the currently executing node as an integer
-        percentage ``[0, 100]`` (read-only)."""
-        return int(100 * self.current_node.progress)
+    def progress(self) -> float:
+        """Progress as a float between 0.0 and 1.0 (read-only).
+        
+        Returns 0.0 when cancelled, 1.0 when finished, or the average
+        progress of all nodes currently in progress. Each node's 
+        progress is weighted equally.
+        """
+        if self.cancelled or not self.nodes:
+            return 0.0
+        
+        if self.finished:
+            return 1.0
+        
+        progress_sum = sum(node.progress for node in self.nodes.values())
+        return progress_sum / max(len(self.nodes), 1)
 
     # ------------------------------------------------------------------
     # Public API
@@ -345,6 +465,8 @@ class Graph(LoggingBehavior):
         else:
             self._run_sequential()
         self.finished = True
+        if self.observer is not None:
+            self.observer.on_run_end(self.succeeded, self.error)
         self.log_info(
             'ETL process done:\n' + '\n'.join(repr(n)
             for n in self.nodes.values()))
@@ -374,7 +496,13 @@ class Graph(LoggingBehavior):
 
             self._current_node_name = name
             node.reset()
+            if self.observer is not None:
+                self.observer.on_node_start(
+                    name, self._node_label(name), self._node_index, len(self.nodes))
             node.process(edges_in, self.edges[name])
+            if self.observer is not None:
+                self.observer.on_node_end(
+                    name, self._node_label(name), self._node_index, len(self.nodes))
             self.edges[node.inputs_from] = node._inputs
             self.edges[name] = node.outputs
 
@@ -425,8 +553,16 @@ class Graph(LoggingBehavior):
             def _target(
                     n: Node = node,
                     ei: List[Edge] = edges_in,
-                    eo: List[Edge] = edges_out) -> None:
+                    eo: List[Edge] = edges_out,
+                    _name: str = name,
+                    _idx: int = i + 1) -> None:
+                if self.observer is not None:
+                    self.observer.on_node_start(
+                        _name, self._node_label(_name), _idx, len(self.nodes))
                 n.process_streaming(ei, eo)
+                if self.observer is not None:
+                    self.observer.on_node_end(
+                        _name, self._node_label(_name), _idx, len(self.nodes))
                 for edge in eo:
                     edge.close()
 
@@ -455,6 +591,8 @@ class Graph(LoggingBehavior):
         self._current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
         mode = 'threaded' if self._threaded else 'sequential'
         self.log_info(f'Run ({mode}) following graph\n{repr(self)}')
+        if self.observer is not None:
+            self.observer.on_run_start(len(self.nodes))
 
     def _adjust_col_widths(self) -> None:
         """Align the ``_col_width`` of all nodes to the longest node 
@@ -508,4 +646,4 @@ class Graph(LoggingBehavior):
         self.run()
 
 
-__all__ = ['Graph']
+__all__ = ['Graph', 'GraphObserver']

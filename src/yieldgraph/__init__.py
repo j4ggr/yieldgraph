@@ -6,11 +6,13 @@ from .edge import Edge
 from .job import Job
 from .node import Node
 from .graph import Graph
+from .graph import GraphObserver
 
 __all__ = [
     'Edge',
     'ENV',
     'Graph',
+    'GraphObserver',
     'Job',
     'LOG',
     'LoggingBehavior',
