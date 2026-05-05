@@ -199,7 +199,7 @@ print(LOG.ERROR)    # 'ERROR'
 print(LOG.CRITICAL) # 'CRITICAL'
 
 print(ENV.LOG_TRACEBACK)    # bool — reflects YIELDGRAPH_LOG_TRACEBACK
-print(LOG.TRACE_LEVEL_NUM)  # 5
+print(LOG.TRACE_LEVEL)  # 5
 ```
 
 Use `LOG` constants with the `log()` method for type-safe log level references:

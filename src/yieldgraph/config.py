@@ -14,7 +14,10 @@ levels. The log levels are defined in the `LOG` instance, and include
 TRACE, DEBUG, INFO, WARNING, ERROR, and CRITICAL. Whether traceback 
 information is included in error log messages is controlled by the 
 ``YIELDGRAPH_LOG_TRACEBACK`` environment variable via 
-:attr:`ENV.LOG_TRACEBACK`.
+:attr:`ENV.LOG_TRACEBACK`. All logging can be suppressed entirely by 
+setting the ``YIELDGRAPH_LOG_DISABLED`` environment variable to a truthy
+value, which causes every call to :meth:`LoggingBehavior.log` to return
+immediately without emitting anything.
 
 The `LoggingBehavior` class provides a :attr:`log_title` property that
 can be overridden by classes that inherit from it to provide a custom 
@@ -31,9 +34,9 @@ library.
 import os
 import logging
 
+from typing import Tuple
 from typing import Literal
 from typing import Optional
-from logging import _nameToLevel
 from dataclasses import dataclass
 
 
@@ -60,12 +63,19 @@ class _ENV_:
     LOG_TRACEBACK_KEY: str = 'YIELDGRAPH_LOG_TRACEBACK'
     """Name of the environment variable that configures traceback logging."""
 
+    LOG_DISABLED_KEY: str = 'YIELDGRAPH_LOG_DISABLED'
+    """Name of the environment variable that disables all logging output."""
+
+    TRUEISH_VALUES: Tuple[str, ...] = ('1', 'true', 'yes')
+    """Case-insensitive values that are considered "true" for 
+    environment variables."""
+
     @property
     def THREADED(self) -> bool:
         """Whether threaded execution is currently enabled.
 
         Returns ``True`` if the ``YIELDGRAPH_THREADED`` environment
-        variable is set to ``'1'``, ``'true'``, or ``'yes'``
+        variable is set to one of the values in :attr:`TRUEISH_VALUES`
         (case-insensitive), ``False`` otherwise.
 
         Examples
@@ -82,26 +92,53 @@ class _ENV_:
         g.run()
         ```
         """
-        return os.environ.get(self.THREADED_KEY, '').lower() in ('1', 'true', 'yes')
+        threaded_value = os.environ.get(self.THREADED_KEY, '')
+        return threaded_value.lower() in self.TRUEISH_VALUES
 
     @property
     def LOG_TRACEBACK(self) -> bool:
         """Whether traceback information is included in log messages.
 
         Returns ``True`` if the ``YIELDGRAPH_LOG_TRACEBACK`` environment
-        variable is set to ``'1'``, ``'true'``, or ``'yes'``
+        variable is set to one of the values in :attr:`TRUEISH_VALUES`
         (case-insensitive), ``False`` otherwise.
         """
-        return os.environ.get(self.LOG_TRACEBACK_KEY, '').lower() in ('1', 'true', 'yes')
+        traceback_value = os.environ.get(self.LOG_TRACEBACK_KEY, '')
+        return traceback_value.lower() in self.TRUEISH_VALUES
+
+    @property
+    def LOG_DISABLED(self) -> bool:
+        """Whether all logging output is disabled.
+
+        Returns ``True`` if the ``YIELDGRAPH_LOG_DISABLED`` environment
+        variable is set to one of the values in :attr:`TRUEISH_VALUES`
+        (case-insensitive), ``False`` otherwise. When ``True``, every
+        call to :meth:`~yieldgraph.config.LoggingBehavior.log` returns
+        immediately without emitting anything.
+        """
+        return os.environ.get(self.LOG_DISABLED_KEY, '').lower() in self.TRUEISH_VALUES
 
 ENV = _ENV_()
 """Instance of :class:`_ENV_` that provides the current values of
 environment variables used to configure the `yieldgraph` library.
 
 Properties are evaluated at access time, so changes to environment
-variables are immediately reflected. Use :attr:`~_ENV_.THREADED_KEY` and
-:attr:`~_ENV_.LOG_TRACEBACK_KEY` to access the raw key names when
+variables are immediately reflected. Use the ``_KEY`` class attributes
+(e.g. :attr:`~_ENV_.THREADED_KEY`, :attr:`~_ENV_.LOG_TRACEBACK_KEY`,
+:attr:`~_ENV_.LOG_DISABLED_KEY`) to access the raw key names when
 manipulating ``os.environ`` directly (e.g., in tests).
+
+Quick reference:
+
++------------------------------+---------------------------+----------------------------------------+
+| Property                     | Key constant              | Effect when truthy                     |
++==============================+===========================+========================================+
+| :attr:`ENV.THREADED`         | ``ENV.THREADED_KEY``      | Run graph nodes in threads             |
++------------------------------+---------------------------+----------------------------------------+
+| :attr:`ENV.LOG_TRACEBACK`    | ``ENV.LOG_TRACEBACK_KEY`` | Include tracebacks in error messages   |
++------------------------------+---------------------------+----------------------------------------+
+| :attr:`ENV.LOG_DISABLED`     | ``ENV.LOG_DISABLED_KEY``  | Suppress all logging output            |
++------------------------------+---------------------------+----------------------------------------+
 """
 
 @dataclass(frozen=True)
@@ -109,7 +146,7 @@ class _Log_:
     """Class containing log level constants for logging behavior. This
     class defines constants for the log levels TRACE, DEBUG, INFO,
     WARNING, ERROR, and CRITICAL, as well as the custom
-    :attr:`TRACE_LEVEL_NUM` integer.
+    :attr:`TRACE_LEVEL` integer.
     
     Notes
     -----
@@ -129,11 +166,77 @@ class _Log_:
     """Log level for error messages."""
     CRITICAL: Literal['CRITICAL'] = 'CRITICAL'
     """Log level for critical messages."""
-    TRACE_LEVEL_NUM: Literal[5] = 5
+    TRACE_LEVEL: Literal[5] = 5
     """Custom log level number for TRACE level. This is set to 5, which is
     lower than the standard DEBUG level (10) to allow for more fine-grained
     logging. This log level can be used to log very detailed information 
     that is typically only useful for debugging specific issues."""
+    DEBUG_LEVEL: Literal[10] = logging.DEBUG
+    """Log level number for DEBUG level, set to the standard 
+    `logging.DEBUG` value."""
+    INFO_LEVEL: Literal[20] = logging.INFO
+    """Log level number for INFO level, set to the standard
+    `logging.INFO` value."""
+    WARNING_LEVEL: Literal[30] = logging.WARNING
+    """Log level number for WARNING level, set to the standard
+    `logging.WARNING` value."""
+    ERROR_LEVEL: Literal[40] = logging.ERROR
+    """Log level number for ERROR level, set to the standard
+    `logging.ERROR` value."""
+    CRITICAL_LEVEL: Literal[50] = logging.CRITICAL
+    """Log level number for CRITICAL level, set to the standard
+    `logging.CRITICAL` value."""
+    def __getitem__(self, key: str | int) -> int:
+        """Allow dictionary-like access to log level numbers by name.
+        For example, `LOG['DEBUG']` would return the integer value for 
+        the DEBUG level.
+
+        Parameters
+        ----------
+        key : str | int
+            The log level name as a string (e.g., 'DEBUG') or the log level
+            number as an integer (e.g., 10 for DEBUG).
+
+        Returns
+        -------
+        int
+            The corresponding log level integer.
+        """
+        if isinstance(key, int):
+            return key
+        
+        key = key.upper()
+        if not hasattr(self, f'{key}_LEVEL'):
+            raise KeyError(f'Invalid log level: {key}')
+        
+        return getattr(self, f'{key}_LEVEL')
+    
+    def __call__(self, level: int | str) -> str:
+        """Allow callable access to log level names by number. For 
+        example, `LOG(10)` would return 'DEBUG'.
+
+        Parameters
+        ----------
+        level : int | str
+            The log level number as an integer (e.g., 10 for DEBUG) or 
+            the log level name as a string (e.g., 'DEBUG').
+
+        Returns
+        -------
+        str
+            The corresponding log level name as a string.
+        """
+
+        if isinstance(level, int):
+            for attr in dir(self):
+                if attr.endswith('_LEVEL') and getattr(self, attr) == level:
+                    return attr.split('_')[0]
+            raise KeyError(f'Invalid log level number: {level}')
+
+        level = level.upper()
+        if not hasattr(self, level):
+            raise KeyError(f'Invalid log level name: {level}')
+        return level
 
 LOG = _Log_()
 """Instance of the `_Log_` class containing log level constants and
@@ -143,6 +246,15 @@ This instance can be used throughout the `yieldgraph` library to access
 log level constants (e.g., `LOG.DEBUG`, `LOG.INFO`, etc.). Use
 :attr:`ENV.LOG_TRACEBACK` to check whether traceback information should
 be included in log output.
+
+The `LoggingBehavior` mixin class uses the `LOG` instance to determine
+log levels when logging messages. This allows for consistent log level
+references across the library and makes it easy to change log level 
+values in one place if needed.
+
+To access log level numbers by name, you can use dictionary-like access 
+(e.g., `LOG['DEBUG']`), and to access log level names by number, you can 
+call the instance (e.g., `LOG(10)` returns 'DEBUG').
 """
 
 try:
@@ -151,7 +263,7 @@ try:
     
 except ImportError:
     from logging import Logger
-    logging.addLevelName(LOG.TRACE_LEVEL_NUM, 'TRACE')
+    logging.addLevelName(LOG.TRACE_LEVEL, 'TRACE')
     logger = logging.getLogger('yieldgraph')
 
 class LoggingBehavior:
@@ -195,38 +307,6 @@ class LoggingBehavior:
         By default, it returns the class name. You can override this
         property in your class to provide a custom log title."""
         return self.__class__.__name__
-    
-    @staticmethod
-    def name_to_level(name: str | int) -> int:
-        """Convert log level name to log level integer.
-        
-        This method takes a log level name as input and returns the 
-        corresponding log level integer. If the log level name is not 
-        recognized, it defaults to INFO level.
-        
-        Parameters
-        ----------
-        name : str | int
-            The name or integer of the log level (e.g., 'TRACE', 
-            'DEBUG', 'INFO',  'WARNING', 'ERROR', 'CRITICAL'). If an
-            integer is provided, it checks if it is a valid log level
-            integer and returns it. If a string is provided, it looks up
-            the corresponding integer value.
-            
-        Returns
-        -------
-        int
-            The corresponding log level integer."""
-        if name == 'TRACE':
-            return LOG.TRACE_LEVEL_NUM
-        
-        if isinstance(name, int) and name in _nameToLevel.values():
-            return name
-        
-        if isinstance(name, str) and name in _nameToLevel:
-            return _nameToLevel[name]
-        
-        return logging.INFO
 
     def log(
             self,
@@ -235,6 +315,9 @@ class LoggingBehavior:
             exception: Optional[Exception] = None) -> None:
         """Log a message with the given log level.
         
+        Does nothing if :attr:`ENV.LOG_DISABLED` is ``True``
+        (i.e. ``YIELDGRAPH_LOG_DISABLED`` is set to a truthy value).
+
         This method uses the :attr:`log_title` property to include the 
         class name in the log message. The log level can be specified as 
         an integer or a string. If the log level is a string, it is 
@@ -249,6 +332,9 @@ class LoggingBehavior:
         exception : Optional[Exception], optional
             An optional exception to include in the log message. If 
             provided, it will be included in the log output."""
+        if ENV.LOG_DISABLED:
+            return
+        
         if self.log_title:
             message = f'{self.log_title}: {message}'
         try:
@@ -256,7 +342,7 @@ class LoggingBehavior:
             .opt(depth=1, exception=exception) # pyright: ignore[reportAttributeAccessIssue]
             .log(level, message))
         except AttributeError:
-            self.logger.log(self.name_to_level(level), message)
+            self.logger.log(LOG[level], message)
     
     def log_exception(self, message: str, exception: Exception) -> None:
         """Log an exception with the given message.

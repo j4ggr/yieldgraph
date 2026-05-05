@@ -87,7 +87,7 @@ from yieldgraph import LOG, ENV, LoggingBehavior, START_NODE_NAME
 
 # Log level constants
 print(LOG.INFO)           # 'INFO'
-print(LOG.TRACE_LEVEL_NUM) # 5
+print(LOG.TRACE_LEVEL) # 5
 
 # Environment variable names
 print(ENV.THREADED)       # 'YIELDGRAPH_THREADED'
