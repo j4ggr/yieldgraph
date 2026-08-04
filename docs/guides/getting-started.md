@@ -61,7 +61,7 @@ print(g.output)
 2. Each subsequent function receives whatever the previous step `yield`s — unpacked as individual arguments.
 3. `add_chain` registers the functions and wires up the internal `Edge` queues automatically.
 4. `g.run()` executes all nodes in order. No data moves until you call `run`.
-5. `g.output` is `List[Tuple[Any, ...]]`. Every yielded value is normalised to a tuple, so a plain `int` becomes a one-element tuple `(int,)`.
+5. `g.output` is `list[tuple[Any, ...]]`. Every yielded value is normalised to a tuple, so a plain `int` becomes a one-element tuple `(int,)`.
 
 ---
 
@@ -261,7 +261,7 @@ print(g.output)
 
 ## Reading pipeline output
 
-`g.output` returns a `List[Tuple[Any, ...]]` collected from the **terminal nodes** (the last node of each chain).
+`g.output` returns a `list[tuple[Any, ...]]` collected from the **terminal nodes** (the last node of each chain).
 
 ```python
 g.run()

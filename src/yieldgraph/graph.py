@@ -30,20 +30,11 @@ print(g.output)   # → [(2,), (4,), (6,)]
 """
 
 import threading
-
 from collections import defaultdict
-
+from collections.abc import Callable
 from typing import Any
-from typing import Callable
-from typing import DefaultDict
-from typing import Dict
-from typing import List
-from typing import Tuple
 
-from .config import ENV
-from .config import LoggingBehavior
-from .config import START_NODE_NAME
-
+from .config import ENV, START_NODE_NAME, LoggingBehavior
 from .edge import Edge
 from .node import Node
 
@@ -179,19 +170,19 @@ class Graph(LoggingBehavior):
 
     # --- public state -------------------------------------------------
 
-    nodes: Dict[str, Node]
+    nodes: dict[str, Node]
     """Ordered mapping of node name → :class:`~yieldgraph.node.Node`.
 
     Nodes are inserted in the order :meth:`add_chain` is called and
     executed in that same order by :meth:`run`."""
 
-    edges: DefaultDict[str, List[Edge]]
+    edges: defaultdict[str, list[Edge]]
     """All edge queues, keyed by the name of the *source* node.
 
     The special key :data:`~yieldgraph.config.START_NODE_NAME` holds the
     seed edges for chains that do not attach to an existing node."""
 
-    terminal_nodes: List[str]
+    terminal_nodes: list[str]
     """Names of the last node in each chain.
 
     Their outgoing edges are collected into :attr:`output` after the
@@ -214,7 +205,7 @@ class Graph(LoggingBehavior):
     Empty string when the run succeeded.  Check :attr:`succeeded` as a
     convenient boolean alternative."""
 
-    labels: Dict[str, str]
+    labels: dict[str, str]
     """Optional display labels keyed by node name.
 
     Used by :attr:`step` and :meth:`_node_label` to produce
@@ -222,7 +213,7 @@ class Graph(LoggingBehavior):
     absent the label is derived automatically by uppercasing each 
     ``_``-separated token."""
 
-    observer: 'GraphObserver | None'
+    observer: GraphObserver | None
     """Optional :class:`GraphObserver` instance.
 
     Assign before calling :meth:`run` to receive push callbacks at the
@@ -235,7 +226,7 @@ class Graph(LoggingBehavior):
 
     # --- private state ------------------------------------------------
 
-    _output: List[Tuple[Any, ...]]
+    _output: list[tuple[Any, ...]]
     """Cached flat list of all outputs collected from 
     :attr:`terminal_nodes`."""
 
@@ -300,7 +291,7 @@ class Graph(LoggingBehavior):
         return self.nodes[self._current_node_name]
 
     @property
-    def output(self) -> List[Tuple[Any, ...]]:
+    def output(self) -> list[tuple[Any, ...]]:
         """Flat list of all output tuples from the terminal nodes 
         (read-only).
 
@@ -372,8 +363,8 @@ class Graph(LoggingBehavior):
     def add_chain(
             self,
             *job_functions: Callable,
-            labels: Tuple[str, ...] = (),
-            initial_input: Tuple[Any, ...] = (),
+            labels: tuple[str, ...] = (),
+            initial_input: tuple[Any, ...] = (),
             attach_to: str = '') -> None:
         """Add an ordered sequence of callables to the graph as a chain.
 
@@ -531,7 +522,7 @@ class Graph(LoggingBehavior):
         for edge in self.edges[START_NODE_NAME]:
             edge.close()
 
-        threads: List[threading.Thread] = []
+        threads: list[threading.Thread] = []
 
         for i, (name, node) in enumerate(self.nodes.items()):
             self._node_index = i + 1
@@ -552,8 +543,8 @@ class Graph(LoggingBehavior):
 
             def _target(
                     n: Node = node,
-                    ei: List[Edge] = edges_in,
-                    eo: List[Edge] = edges_out,
+                    ei: list[Edge] = edges_in,
+                    eo: list[Edge] = edges_out,
                     _name: str = name,
                     _idx: int = i + 1) -> None:
                 if self.observer is not None:
@@ -590,7 +581,7 @@ class Graph(LoggingBehavior):
         self._adjust_col_widths()
         self._current_node_name = next(iter(self.nodes.keys())) if self.nodes else ''
         mode = 'threaded' if self._threaded else 'sequential'
-        self.log_info(f'Run ({mode}) following graph\n{repr(self)}')
+        self.log_info(f'Run ({mode}) following graph\n{self!r}')
         if self.observer is not None:
             self.observer.on_run_start(len(self.nodes))
 
@@ -603,7 +594,8 @@ class Graph(LoggingBehavior):
         """
         if not self.nodes:
             return
-        col_width = max(len(n) for n in self.nodes.keys())
+            
+        col_width = max(len(n) for n in self.nodes)
         for node in self.nodes.values():
             node._col_width = col_width
 

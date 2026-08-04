@@ -1,8 +1,7 @@
-import pytest
+import pytest  # noqa: F401
 
 from yieldgraph.edge import Edge
 from yieldgraph.node import Node, _ensure_tuple
-
 
 # ---------------------------------------------------------------------------
 # Helpers shared across test classes

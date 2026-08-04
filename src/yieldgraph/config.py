@@ -31,20 +31,16 @@ consistent formatting and log levels throughout the `yieldgraph`
 library.
 """
 
-import os
 import logging
-
-from typing import Tuple
-from typing import Literal
-from typing import Optional
+import os
 from dataclasses import dataclass
-
+from typing import Literal
 
 __all__ = [
-    'LOG',
-    'LoggingBehavior',
-    'START_NODE_NAME',
     'ENV',
+    'LOG',
+    'START_NODE_NAME',
+    'LoggingBehavior',
 ]
 
 
@@ -66,7 +62,7 @@ class _ENV_:
     LOG_DISABLED_KEY: str = 'YIELDGRAPH_LOG_DISABLED'
     """Name of the environment variable that disables all logging output."""
 
-    TRUEISH_VALUES: Tuple[str, ...] = ('1', 'true', 'yes')
+    TRUEISH_VALUES: tuple[str, ...] = ('1', 'true', 'yes')
     """Case-insensitive values that are considered "true" for 
     environment variables."""
 
@@ -258,8 +254,9 @@ call the instance (e.g., `LOG(10)` returns 'DEBUG').
 """
 
 try:
-    from loguru import logger # pyright: ignore[reportMissingImports]
     from logging import Logger
+
+    from loguru import logger  # pyright: ignore[reportMissingImports]
     
 except ImportError:
     from logging import Logger
@@ -312,7 +309,7 @@ class LoggingBehavior:
             self,
             message: str,
             level: int | str,
-            exception: Optional[Exception] = None) -> None:
+            exception: Exception | None = None) -> None:
         """Log a message with the given log level.
         
         Does nothing if :attr:`ENV.LOG_DISABLED` is ``True``
@@ -329,7 +326,7 @@ class LoggingBehavior:
             The message to log.
         level : int | str
             The log level, either as an integer or a string.
-        exception : Optional[Exception], optional
+        exception : Exception | None, optional
             An optional exception to include in the log message. If 
             provided, it will be included in the log output."""
         if ENV.LOG_DISABLED:

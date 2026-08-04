@@ -11,13 +11,11 @@ consumers can drain the remaining items and stop waiting.
 
 import threading
 import time
-
 from collections import deque
 from typing import Any
-from typing import Optional
 
-
-__all__ = ['Edge']
+__all__ = [
+    'Edge']
 
 
 class Edge(deque):
@@ -98,7 +96,7 @@ class Edge(deque):
             self.append(item)
             self._cond.notify()
 
-    def get(self, timeout: Optional[float] = None) -> Any:
+    def get(self, timeout: float | None = None) -> Any:
         """Remove and return the leftmost item, blocking until one is 
         available.
 

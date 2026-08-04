@@ -46,22 +46,21 @@ g.run()
 """
 
 import traceback
-
+from collections.abc import Callable
 from copy import deepcopy
-
 from typing import Any
-from typing import List
-from typing import Tuple
-from typing import Callable
 
-from .config import ENV
-from .config import LoggingBehavior
-from .config import START_NODE_NAME
+from .config import ENV, START_NODE_NAME, LoggingBehavior
 from .edge import Edge
 from .job import Job
 
+__all__ = [
+    'START_NODE_NAME',
+    'Node',
+    '_ensure_tuple',]
 
-def _ensure_tuple(value: Any) -> Tuple[Any, ...]:
+
+def _ensure_tuple(value: Any) -> tuple[Any, ...]:
     """Wrap *value* in a one-element tuple if it is not already a tuple.
 
     Generator functions in a pipeline may yield either a bare value or a
@@ -75,7 +74,7 @@ def _ensure_tuple(value: Any) -> Tuple[Any, ...]:
 
     Returns
     -------
-    tuple
+    tuple[Any, ...]
         *value* unchanged if it is already a ``tuple``, otherwise
         ``(value,)``.
 
@@ -152,16 +151,13 @@ class Node(LoggingBehavior):
     _job: Job
     """Wrapped :class:`~yieldgraph.job.Job` instance."""
 
-    _inputs: List[Edge]
+    _inputs: list[Edge]
     """List of all incoming edge queues."""
 
     _active_edge_index: int
     """Index into :attr:`_inputs` pointing at the first non-empty edge."""
 
-    _col_width: int
-    """Column width used to align :meth:`__repr__` output across nodes."""
-
-    _last_output: Tuple[Any, ...]
+    _last_output: tuple[Any, ...]
     """Most recent output tuple produced by the job."""
 
     _processing_first: bool
@@ -192,11 +188,11 @@ class Node(LoggingBehavior):
     n_produced: int
     """Number of output tuples pushed to outgoing edges so far."""
 
-    errors: List[Exception]
+    errors: list[Exception]
     """List of exceptions caught during :meth:`_run_one` in the current 
     run."""
 
-    outputs: List[Edge]
+    outputs: list[Edge]
     """List of outgoing edges."""
 
     info: str
@@ -205,6 +201,9 @@ class Node(LoggingBehavior):
     # --- class-level default ------------------------------------------
 
     _col_width: int = 25
+    """Column width used to align :meth:`__repr__` output across nodes.
+    This is a class-level default that can be overridden per-instance if
+    needed."""
 
     # ------------------------------------------------------------------
     # Construction
@@ -260,7 +259,7 @@ class Node(LoggingBehavior):
         return self._inputs[self._active_edge_index]
 
     @inputs.setter
-    def inputs(self, edges: List[Edge]) -> None:
+    def inputs(self, edges: list[Edge]) -> None:
         self._inputs = edges
         self.log_trace(f'Inputs changed, n inputs = {len(edges)}')
         if self._inputs:
@@ -324,7 +323,11 @@ class Node(LoggingBehavior):
         self._processing_first = False
         self._processing_last = False
 
-    def process(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:
+    def process(
+            self,
+            edges_in: list[Edge],
+            edges_out: list[Edge]
+            ) -> None:
         """Consume all items from *edges_in* and push results to 
         *edges_out*.
 
@@ -354,7 +357,7 @@ class Node(LoggingBehavior):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _run_one(self, job_data: Tuple[Any, ...]) -> None:
+    def _run_one(self, job_data: tuple[Any, ...]) -> None:
         """Run the job for a single input item and collect its outputs.
 
         Unpacks *job_data* as positional arguments into the job generator.
@@ -388,9 +391,9 @@ class Node(LoggingBehavior):
             self._graph.cancelled = True
             self.log_info(f'{self} interrupted because: {e}')
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.log_warning(
-                f'Caught error = {e}\nError occurred @ node {repr(self)}')
+                f'Caught error = {e}\nError occurred @ node {self!r}')
             if ENV.LOG_TRACEBACK:
                 self.log_exception(traceback.format_exc(), e)
             self.errors.append(e)
@@ -398,7 +401,7 @@ class Node(LoggingBehavior):
         finally:
             self.n_consumed += 1
 
-    def _fan_out(self, output: Tuple[Any, ...]) -> None:
+    def _fan_out(self, output: tuple[Any, ...]) -> None:
         """Push *output* to every outgoing edge and increment 
         :attr:`n_produced`.
 
@@ -419,7 +422,11 @@ class Node(LoggingBehavior):
         self.log_trace(f'Stored output @ node {self}')
         self.n_produced += 1
 
-    def process_streaming(self, edges_in: List[Edge], edges_out: List[Edge]) -> None:
+    def process_streaming(
+            self,
+            edges_in: list[Edge],
+            edges_out: list[Edge]
+            ) -> None:
         """Consume items from *edges_in* using blocking 
         :meth:`~yieldgraph.edge.Edge.get` calls.
 
@@ -501,6 +508,3 @@ class Node(LoggingBehavior):
                 + f'\n{r}'
             )
         return r
-
-
-__all__ = ['Node', 'START_NODE_NAME', '_ensure_tuple']

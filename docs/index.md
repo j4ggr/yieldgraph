@@ -125,7 +125,7 @@ for row in g.output:
 
 1. The **first** node always receives the `Graph` instance as its first argument.
 2. Subsequent nodes receive whatever the previous node `yield`s — unpacked as `*args`.
-3. Each yielded value is normalised to a tuple, so `g.output` is always `List[Tuple[Any, ...]]`.
+3. Each yielded value is normalised to a tuple, so `g.output` is always `list[tuple[Any, ...]]`.
 
 ---
 

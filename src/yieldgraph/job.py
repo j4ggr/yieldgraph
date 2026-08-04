@@ -66,10 +66,8 @@ for value in gen:
 """
 
 import inspect
-
+from collections.abc import Callable, Generator
 from typing import Any
-from typing import Callable
-from typing import Generator
 
 
 def _as_generator(fn: Callable) -> Callable:
@@ -111,13 +109,16 @@ def _as_generator(fn: Callable) -> Callable:
     if inspect.isgeneratorfunction(fn):
         return fn
 
-    def wrapper(*args: Any) -> Generator[Any, Any, None]:
+    def wrapper(*args: Any) -> Generator[Any, Any]:
         yield fn(*args)
 
     return wrapper
 
 
-def _wrap(fn: Callable, job: 'Job') -> Callable:
+def _wrap(
+        fn: Callable,
+        job: 'Job'  # noqa: UP037
+        ) -> Callable:  
     """Decorate *fn* with a per-yield cancellation check.
 
     The returned *runner* drives the generator loop produced by
@@ -172,7 +173,7 @@ def _wrap(fn: Callable, job: 'Job') -> Callable:
     assert not job.running
     ```
     """
-    def runner(*args: Any, **kwargs: Any) -> Generator[Any, Any, None]:
+    def runner(*args: Any, **kwargs: Any) -> Generator[Any, Any]:
         job._running = True
         for result in _as_generator(fn)(*args, **kwargs):
             if job.cancelled:
@@ -294,7 +295,7 @@ class Job:
         self._label = label
         self._wrapped = _wrap(function, self)
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Generator[Any, Any, None]:
+    def __call__(self, *args: Any, **kwargs: Any) -> Generator[Any, Any]:
         """Execute the wrapped function and return its generator.
 
         Resets :attr:`cancelled` to ``False`` before each call so that a
