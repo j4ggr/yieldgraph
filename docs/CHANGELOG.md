@@ -7,15 +7,57 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ---
 
 - [Changelog](#changelog)
-  - [0.3.0 — 2026-05-05](#030--2026-05-05)
+  - [\[0.4.0\] — 2026-08-19](#040--2026-08-19)
     - [Added](#added)
-  - [0.2.0 — 2026-05-05](#020--2026-05-05)
-    - [Added](#added-1)
+    - [Fixed](#fixed)
     - [Changed](#changed)
-  - [0.1.0 — 2026-05-04](#010--2026-05-04)
+  - [0.3.0 — 2026-05-05](#030--2026-05-05)
+    - [Added](#added-1)
+  - [0.2.0 — 2026-05-05](#020--2026-05-05)
     - [Added](#added-2)
     - [Changed](#changed-1)
-    - [Fixed](#fixed)
+  - [0.1.0 — 2026-05-04](#010--2026-05-04)
+    - [Added](#added-3)
+    - [Changed](#changed-2)
+    - [Fixed](#fixed-1)
+
+## [0.4.0] — 2026-08-19
+
+### Added
+
+**`Graph.from_chain` — one-step construction for single-chain pipelines** (`315adb2`)
+
+- New `Graph.from_chain(*job_functions, labels=(), initial_input=())` classmethod
+  that builds a `Graph` and calls `add_chain` in one step, for the common case of
+  a graph consisting of a single linear chain.
+- 11 new tests in `TestFromChain` (`test_graph.py`) covering node/terminal
+  creation, custom labels, `initial_input` forwarding, empty-args behavior, run
+  output, and equivalence with manual `add_chain` construction (`1b97864`).
+- `Graph` class docstring gained an "Examples" section showing `from_chain` as
+  a shortcut for `Graph()` + `add_chain()`; the getting-started guide documents
+  the same shortcut (`1b97864`).
+
+### Fixed
+
+**Identity check in `add_chain`** (`315adb2`)
+
+- `add_chain` now checks whether the graph instance was already prepended to
+  `initial_input` using an identity check (`any(item is self for item in
+  initial_input)`) instead of `self not in initial_input`. The previous `in`
+  check invoked `__eq__` on every `initial_input` item, which raised
+  `ValueError` for array-like items (e.g. pandas `DataFrame`/`Series`, numpy
+  arrays) whose `__eq__` returns an array instead of a bool.
+- Fixed a module docstring typo in `node.py` ("Edge  ueues" → "Edge queues").
+
+### Changed
+
+**Typing and lint cleanup** (`6365176`)
+
+- Removed unused `List`, `Tuple`, and `Dict` imports from `typing` across the
+  package.
+- Reordered imports and `__all__` entries; fixed miscellaneous ruff warnings.
+
+---
 
 ## [0.3.0] — 2026-05-05
 
