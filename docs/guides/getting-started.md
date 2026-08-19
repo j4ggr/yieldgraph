@@ -63,6 +63,15 @@ print(g.output)
 4. `g.run()` executes all nodes in order. No data moves until you call `run`.
 5. `g.output` is `list[tuple[Any, ...]]`. Every yielded value is normalised to a tuple, so a plain `int` becomes a one-element tuple `(int,)`.
 
+!!! tip "Shortcut for single chains"
+    When a graph consists of a single linear chain, `Graph.from_chain(source, double)` is
+    equivalent to `Graph()` followed by `add_chain(source, double)`:
+
+    ```python
+    g = Graph.from_chain(source, double)
+    g.run()
+    ```
+
 ---
 
 ## Source functions

@@ -141,6 +141,20 @@ class Graph(LoggingBehavior):
     :class:`~yieldgraph.edge.Edge` queues between nodes and exposes the
     final outputs through :attr:`output`.
 
+    Examples
+    --------
+    ```python
+    from yieldgraph import Graph
+
+    g = Graph()
+    g.add_chain(source, double)
+    g.run()
+
+    # equivalent shortcut for a single linear chain
+    g = Graph.from_chain(source, double)
+    g.run()
+    ```
+
     Attributes
     ----------
     nodes : dict[str, Node]

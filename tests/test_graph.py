@@ -156,6 +156,65 @@ class TestAddChain:
 
 
 # ---------------------------------------------------------------------------
+# from_chain
+# ---------------------------------------------------------------------------
+
+class TestFromChain:
+    def test_returns_graph_instance(self):
+        g = Graph.from_chain(_source_items(1))
+        assert isinstance(g, Graph)
+
+    def test_single_function_adds_one_node(self):
+        g = Graph.from_chain(_source_items(1))
+        assert len(g.nodes) == 1
+
+    def test_chain_of_two_adds_two_nodes(self):
+        g = Graph.from_chain(_source_items(1), _identity)
+        assert len(g.nodes) == 2
+
+    def test_node_names_are_function_names(self):
+        g = Graph.from_chain(_source_items(1), _double)
+        assert 'source' in g.nodes
+        assert '_double' in g.nodes
+
+    def test_terminal_nodes_contains_last_node(self):
+        g = Graph.from_chain(_source_items(1), _double)
+        assert '_double' in g.terminal_nodes
+
+    def test_custom_labels_stored(self):
+        g = Graph.from_chain(_source_items(1), _double, labels=('Src', 'Dbl'))
+        assert g.nodes['source']._job.label == 'Src'
+        assert g.nodes['_double']._job.label == 'Dbl'
+
+    def test_graph_prepended_to_initial_input(self):
+        g = Graph.from_chain(_source_items(1))
+        seed_edge = g.edges[START_NODE_NAME][0]
+        first_input = list(seed_edge)[0]
+        assert first_input[0] is g
+
+    def test_initial_input_forwarded(self):
+        g = Graph.from_chain(_add, initial_input=(1, 2))
+        seed_edge = g.edges[START_NODE_NAME][0]
+        first_input = list(seed_edge)[0]
+        assert first_input[1:] == (1, 2)
+
+    def test_no_job_functions_creates_empty_graph(self):
+        g = Graph.from_chain()
+        assert g.nodes == {}
+
+    def test_run_produces_expected_output(self):
+        g = Graph.from_chain(_source_items(1, 2, 3), _double)
+        g.run()
+        assert g.output == [(2,), (4,), (6,)]
+
+    def test_equivalent_to_manual_construction(self):
+        g1 = Graph.from_chain(_source_items(1), _double)
+        g2 = Graph()
+        g2.add_chain(_source_items(1), _double)
+        assert list(g1.nodes.keys()) == list(g2.nodes.keys())
+
+
+# ---------------------------------------------------------------------------
 # run() — sequential (default)
 # ---------------------------------------------------------------------------
 
