@@ -117,7 +117,7 @@ def _as_generator(fn: Callable) -> Callable:
 
 def _wrap(
         fn: Callable,
-        job: 'Job'  # noqa: UP037
+        job: 'Job'
         ) -> Callable:  
     """Decorate *fn* with a per-yield cancellation check.
 

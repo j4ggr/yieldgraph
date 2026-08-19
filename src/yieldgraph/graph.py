@@ -265,6 +265,36 @@ class Graph(LoggingBehavior):
         self.labels = {}
         self.observer: GraphObserver | None = None
 
+    @classmethod
+    def from_chain(
+            cls,
+            *job_functions: Callable,
+            labels: tuple[str, ...] = (),
+            initial_input: tuple[Any, ...] = ()
+            ) -> 'Graph':
+        """Construct a new `Graph` with a single chain already added.
+
+        Equivalent to `Graph()` followed by `add_chain(...)`, for the
+        common case of a graph consisting of one linear chain.
+
+        Parameters
+        ----------
+        *job_functions : Callable
+            Forwarded to `add_chain`.
+        labels : tuple[str, ...], optional
+            Forwarded to `add_chain`.
+        initial_input : tuple, optional
+            Forwarded to `add_chain`.
+
+        Returns
+        -------
+        Graph
+            The newly constructed graph, with the chain already wired.
+        """
+        graph = cls()
+        graph.add_chain(
+            *job_functions, labels=labels, initial_input=initial_input)
+        return graph
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -409,7 +439,7 @@ class Graph(LoggingBehavior):
             return
 
         if not attach_to:
-            if self not in initial_input:
+            if not any(item is self for item in initial_input):
                 initial_input = (self,) + initial_input
             self.edges[START_NODE_NAME].append(Edge([initial_input]))
             self.log_trace(f'Initial input = {initial_input}')

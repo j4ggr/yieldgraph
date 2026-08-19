@@ -2,9 +2,9 @@
 its input/output edges inside a :class:`~yieldgraph.graph.Graph`.
 
 Each :class:`Node` pulls items from one or more incoming 
-:class:`~yieldgraph.edge.Edge`  ueues, feeds them one at a time into its 
+:class:`~yieldgraph.edge.Edge` queues, feeds them one at a time into its 
 :class:`~yieldgraph.job.Job`, and fans every yielded result out to all
-outgoing edges.  Error handling, progress tracking, and cancellation are
+outgoing edges. Error handling, progress tracking, and cancellation are
 all managed here so that :class:`~yieldgraph.graph.Graph` only needs to 
 iterate over nodes in order.
 
