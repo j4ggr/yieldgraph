@@ -4,6 +4,7 @@ import pytest
 from yieldgraph.config import START_NODE_NAME, ENV
 from yieldgraph.edge import Edge
 from yieldgraph.graph import Graph, GraphObserver
+from yieldgraph.job import convergent
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +154,50 @@ class TestAddChain:
         g.add_chain(_source_items(1), _double, labels=('Src', 'Dbl'))
         assert g.nodes['source']._job.label == 'Src'
         assert g.nodes['_double']._job.label == 'Dbl'
+
+
+# ---------------------------------------------------------------------------
+# convergent nodes via add_chain
+# ---------------------------------------------------------------------------
+
+def _sum_all(items):
+    yield sum(item[0] for item in items)
+
+
+class TestConvergentChain:
+    def test_marked_function_becomes_convergent_node(self):
+        g = Graph()
+        g.add_chain(_source_items(1, 2, 3), convergent(_sum_all))
+        assert g.nodes['_sum_all'].convergent is True
+
+    def test_unmarked_function_is_not_convergent(self):
+        g = Graph()
+        g.add_chain(_source_items(1, 2, 3), _double)
+        assert g.nodes['_double'].convergent is False
+
+    def test_sequential_run_calls_job_once_with_all_items(self):
+        os.environ.pop(ENV.THREADED_KEY, None)
+        g = Graph()
+        g.add_chain(_source_items(1, 2, 3), convergent(_sum_all))
+        g.run()
+        assert g.output == [(6,)]
+
+    def test_threaded_run_calls_job_once_with_all_items(self):
+        os.environ[ENV.THREADED_KEY] = '1'
+        try:
+            g = Graph()
+            g.add_chain(_source_items(1, 2, 3), convergent(_sum_all))
+            g.run()
+            assert g.output == [(6,)]
+        finally:
+            os.environ.pop(ENV.THREADED_KEY, None)
+
+    def test_downstream_node_after_convergent_node(self):
+        os.environ.pop(ENV.THREADED_KEY, None)
+        g = Graph()
+        g.add_chain(_source_items(1, 2, 3), convergent(_sum_all), _double)
+        g.run()
+        assert g.output == [(12,)]
 
 
 # ---------------------------------------------------------------------------

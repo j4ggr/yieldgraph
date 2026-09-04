@@ -69,6 +69,58 @@ import inspect
 from collections.abc import Callable, Generator
 from typing import Any
 
+CONVERGENT_ATTR = '_yieldgraph_convergent'
+"""Attribute name set on a job function by :func:`convergent` and read
+by :meth:`~yieldgraph.graph.Graph.add_chain` to decide whether the
+resulting :class:`~yieldgraph.node.Node` should run in convergent mode."""
+
+
+def convergent(fn: Callable) -> Callable:
+    """Mark *fn* as a convergent job function for `Graph.add_chain`.
+
+    A convergent node waits until every item from its upstream node has
+    been produced, then calls *fn* **once** with the full list of
+    collected items (in arrival order) as a single positional argument,
+    instead of once per item.
+
+    Useful for a fan-in/aggregation step at the end of a chain — e.g.
+    grouping and writing out per-file results once every file has been
+    extracted/loaded/transformed — without needing a separate
+    post-`Graph.run()` step to inspect `Graph.output`.
+
+    Parameters
+    ----------
+    fn : Callable
+        The job function to mark. Mutated in place (an attribute is set
+        on it) and returned unchanged otherwise, so it can be used as a
+        decorator or called inline.
+
+    Returns
+    -------
+    Callable
+        *fn*, with the convergent marker attribute set.
+
+    Examples
+    --------
+    ```python
+    from yieldgraph import Graph, convergent
+
+    @convergent
+    def write_batches(items):
+        # items is the full list of (state, df) tuples yielded by
+        # `transform` for every extracted file
+        for state, df in items:
+            ...
+            yield result
+
+    g = Graph()
+    g.add_chain(extract, load, transform, write_batches)
+    g.run()
+    ```
+    """
+    setattr(fn, CONVERGENT_ATTR, True)
+    return fn
+
 
 def _as_generator(fn: Callable) -> Callable:
     """Normalise *fn* into a generator function.

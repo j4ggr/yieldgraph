@@ -7,6 +7,8 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ---
 
 - [Changelog](#changelog)
+  - [\[Unreleased\]](#unreleased)
+    - [Added](#added-unreleased)
   - [\[0.4.0\] — 2026-08-19](#040--2026-08-19)
     - [Added](#added)
     - [Fixed](#fixed)
@@ -20,6 +22,30 @@ the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html
     - [Added](#added-3)
     - [Changed](#changed-2)
     - [Fixed](#fixed-1)
+
+## [Unreleased]
+
+### Added {#added-unreleased}
+
+**Convergent nodes — fan-in / batch aggregation step**
+
+- New `yieldgraph.job.convergent` decorator marks a job function so the
+  `Node`/`Graph.add_chain` machinery runs it **once for the entire
+  upstream batch** (as a single `list[tuple[...]]` argument) instead of
+  once per item — useful for a final aggregation node (e.g. grouping and
+  writing out results) that needs to see every upstream item first.
+- `Node` gained a `convergent: bool` constructor param/attribute and a
+  `_run_convergent` helper; both `process()` (sequential) and
+  `process_streaming()` (threaded) branch on it — sequential mode drains
+  the whole input edge before calling the job once, threaded mode blocks
+  until the upstream edge is closed.
+- `Graph.add_chain` detects the marker on each job function and wires
+  the corresponding `Node` as convergent automatically.
+- Documented in the "Convergent nodes" guide (`docs/guides/patterns.md`)
+  and the API reference (`docs/api/index.md`).
+- New tests: `TestConvergent` (`test_job.py`), `TestConvergentProcess` /
+  `TestConvergentProcessStreaming` (`test_node.py`), `TestConvergentChain`
+  (`test_graph.py`, sequential + threaded end-to-end).
 
 ## [0.4.0] — 2026-08-19
 

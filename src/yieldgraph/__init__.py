@@ -1,7 +1,7 @@
 from .config import ENV, LOG, START_NODE_NAME, LoggingBehavior
 from .edge import Edge
 from .graph import Graph, GraphObserver
-from .job import Job
+from .job import Job, convergent
 from .node import Node
 
 __all__ = [
@@ -14,4 +14,5 @@ __all__ = [
     'Job',
     'LoggingBehavior',
     'Node',
+    'convergent',
 ]

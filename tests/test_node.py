@@ -15,10 +15,10 @@ class _MockGraph:
 
 
 def _make_node(fn, *, inputs_from='upstream', label='', first=True,
-               last=False, cancelled=False):
+               last=False, cancelled=False, convergent=False):
     graph = _MockGraph(cancelled=cancelled)
     return Node(graph, fn, inputs_from=inputs_from, label=label,
-                first=first, last=last)
+                first=first, last=last, convergent=convergent)
 
 
 def _edge(*items) -> Edge:
@@ -408,6 +408,126 @@ class TestProcessStreaming:
         edge_in.close()
         node.process_streaming([edge_in], [Edge()])
         assert all(f is False for f in flags)
+
+
+# ---------------------------------------------------------------------------
+# convergent nodes: process()
+# ---------------------------------------------------------------------------
+
+class TestConvergentProcess:
+    def test_job_called_once_with_full_list(self):
+        calls = []
+
+        def collect(items):
+            calls.append(items)
+            yield len(items)
+
+        node = _make_node(collect, convergent=True)
+        edge_out = Edge()
+        node.process([_edge((1,), (2,), (3,))], [edge_out])
+        assert calls == [[(1,), (2,), (3,)]]
+        assert list(edge_out) == [(3,)]
+
+    def test_no_items_calls_job_with_empty_list(self):
+        calls = []
+
+        def collect(items):
+            calls.append(items)
+            yield 0
+
+        node = _make_node(collect, convergent=True)
+        node.process([Edge()], [Edge()])
+        assert calls == [[]]
+
+    def test_n_consumed_matches_input_count(self):
+        node = _make_node(lambda items: items, convergent=True)
+        node.process([_edge((1,), (2,), (3,))], [Edge()])
+        assert node.n_consumed == 3
+
+    def test_generator_job_multiple_outputs(self):
+        def per_group(items):
+            for item in items:
+                yield item[0] * 10
+
+        node = _make_node(per_group, convergent=True)
+        edge_out = Edge()
+        node.process([_edge((1,), (2,))], [edge_out])
+        assert list(edge_out) == [(10,), (20,)]
+
+    def test_processing_first_and_last_both_true(self):
+        flags = []
+
+        def collect(items):
+            flags.append((node._processing_first, node._processing_last))
+            yield len(items)
+
+        node = _make_node(collect, convergent=True)
+        node.process([_edge((1,), (2,))], [Edge()])
+        assert flags == [(True, True)]
+
+    def test_cancelled_graph_skips_job(self):
+        calls = []
+
+        def collect(items):
+            calls.append(items)
+            yield items
+
+        node = _make_node(collect, convergent=True, cancelled=True)
+        edge_out = Edge()
+        node.process([_edge((1,), (2,))], [edge_out])
+        assert calls == []
+        assert len(edge_out) == 0
+
+    def test_exception_caught_and_stored(self):
+        def boom(items):
+            raise ValueError('bad batch')
+
+        node = _make_node(boom, convergent=True)
+        node.process([_edge((1,), (2,))], [Edge()])
+        assert node.n_errors == 1
+        assert isinstance(node.errors[0], ValueError)
+
+
+# ---------------------------------------------------------------------------
+# convergent nodes: process_streaming()
+# ---------------------------------------------------------------------------
+
+class TestConvergentProcessStreaming:
+    def _run(self, fn, items, cancelled=False):
+        node = _make_node(fn, cancelled=cancelled, convergent=True)
+        edge_in = Edge()
+        for item in items:
+            edge_in.append(item)
+        edge_in.close()
+        edge_out = Edge()
+        node.process_streaming([edge_in], [edge_out])
+        return node, list(edge_out)
+
+    def test_job_called_once_with_full_list(self):
+        calls = []
+
+        def collect(items):
+            calls.append(items)
+            yield len(items)
+
+        node, out = self._run(collect, [(1,), (2,), (3,)])
+        assert calls == [[(1,), (2,), (3,)]]
+        assert out == [(3,)]
+
+    def test_n_consumed_correct(self):
+        node, _ = self._run(lambda items: items, [(1,), (2,)])
+        assert node.n_consumed == 2
+
+    def test_cancelled_graph_skips_job(self):
+        calls = []
+
+        def collect(items):
+            calls.append(items)
+            yield items
+
+        _, out = self._run(collect, [(1,), (2,)], cancelled=True)
+        assert calls == []
+        assert out == []
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,30 @@
 import pytest
 
-from yieldgraph.job import Job, _as_generator, _wrap
+from yieldgraph.job import CONVERGENT_ATTR, Job, _as_generator, _wrap, convergent
+
+
+# ---------------------------------------------------------------------------
+# convergent
+# ---------------------------------------------------------------------------
+
+class TestConvergent:
+    def test_sets_marker_attribute(self):
+        def fn(items): return items
+        convergent(fn)
+        assert getattr(fn, CONVERGENT_ATTR) is True
+
+    def test_returns_same_function(self):
+        def fn(items): return items
+        assert convergent(fn) is fn
+
+    def test_usable_as_decorator(self):
+        @convergent
+        def fn(items): return items
+        assert getattr(fn, CONVERGENT_ATTR) is True
+
+    def test_unmarked_function_has_no_attribute(self):
+        def fn(items): return items
+        assert not hasattr(fn, CONVERGENT_ATTR)
 
 
 # ---------------------------------------------------------------------------

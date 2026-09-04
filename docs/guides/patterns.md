@@ -78,6 +78,63 @@ print("audit output:", [row[0] for row in g.output if "audit"  in row[0]])
 
 ---
 
+## Convergent nodes — fan-in / batch aggregation
+
+By default a node's job runs **once per upstream item**. Mark a job function with `@convergent` to make it run **once for the entire upstream batch** instead — useful for a final aggregation step (e.g. grouping and writing out results) that needs to see everything before it can act:
+
+```python
+from yieldgraph import Graph, convergent
+
+def extract(graph):
+    for record in [
+        {"order": "A", "value": 1},
+        {"order": "B", "value": 2},
+        {"order": "A", "value": 3},
+    ]:
+        yield record
+
+@convergent
+def write_grouped(items):          # (1)!
+    grouped: dict[str, list[int]] = {}
+    for (record,) in items:        # (2)!
+        grouped.setdefault(record["order"], []).append(record["value"])
+
+    for order, values in grouped.items():
+        yield order, sum(values)
+
+g = Graph()
+g.add_chain(extract, write_grouped)
+g.run()
+print(g.output)
+# [('A', 4), ('B', 2)]
+```
+
+1. `items` is the full list of upstream tuples, in arrival order — not a single item.
+2. Each item is still the tuple the upstream node yielded (`_ensure_tuple`-normalised), so unpack it the same way you would inside a per-item job function.
+
+A node further downstream of a convergent node works exactly as usual — it just receives whatever the convergent job yields, one item at a time:
+
+```python
+def summarize(order_and_total):
+    order, total = order_and_total
+    yield f"{order}: {total}"
+
+g = Graph()
+g.add_chain(extract, write_grouped, summarize)
+g.run()
+print(g.output)
+# [('A: 4',), ('B: 2',)]
+```
+
+!!! info "Works in both sequential and threaded mode"
+    In sequential mode a convergent node simply drains its entire input edge before calling the job. In threaded mode it blocks until the upstream edge is [`closed`](../api/index.md#edge) (producer finished) before calling the job — no extra setup needed either way.
+
+!!! warning "Progress and cancellation semantics differ slightly"
+    - `node.progress` still reflects items collected so far, but jumps to 100% only once the single job call returns (there's no per-item progress *during* the job itself).
+    - If `graph.cancelled` is set *while still collecting* the batch, the job never runs and produces no output — unlike a regular node, which still emits whatever it produced before cancellation.
+
+---
+
 ## Seeding a pipeline with initial data
 
 By default the first node receives only the `Graph` instance. Use `initial_input` to pass extra seed values:

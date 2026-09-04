@@ -52,6 +52,25 @@ print(job.label)          # → 'Double It'
 
 ::: yieldgraph.job.Job
 
+### `convergent`
+
+Marks a job function as convergent, so `Graph.add_chain`/`Node` run it once for the whole upstream batch instead of once per item. See [Convergent nodes](../guides/patterns.md#convergent-nodes-fan-in-batch-aggregation) for a full example.
+
+```python
+from yieldgraph import Graph, convergent
+
+@convergent
+def write_all(items):
+    for (record,) in items:
+        ...
+        yield record
+
+g = Graph()
+g.add_chain(source, write_all)
+```
+
+::: yieldgraph.job.convergent
+
 ---
 
 ## Edge

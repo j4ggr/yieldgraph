@@ -36,6 +36,7 @@ from typing import Any
 
 from .config import ENV, START_NODE_NAME, LoggingBehavior
 from .edge import Edge
+from .job import CONVERGENT_ATTR
 from .node import Node
 
 
@@ -438,6 +439,11 @@ class Graph(LoggingBehavior):
         graph instance as its first argument so it can inspect
         :attr:`output`, react to :attr:`cancelled`, etc.
 
+        Any job function marked with :func:`~yieldgraph.job.convergent`
+        becomes a convergent node: instead of running once per upstream
+        item, it waits for its entire upstream batch and runs once with
+        the full list of items.
+
         Examples
         --------
         ```python
@@ -446,6 +452,18 @@ class Graph(LoggingBehavior):
 
         # parallel branch from transform onwards
         g.add_chain(alternate_load, attach_to='transform')
+
+        # fan-in: wait for every `transform` output before writing
+        from yieldgraph import convergent
+
+        @convergent
+        def write_all(items):
+            for state, df in items:
+                ...
+                yield result
+
+        g2 = Graph()
+        g2.add_chain(source, transform, write_all)
         ```
         """
         n_nodes = len(job_functions)
@@ -470,6 +488,7 @@ class Graph(LoggingBehavior):
                 label=label,
                 first=(i == 0),
                 last=(i == n_nodes - 1),
+                convergent=getattr(fn, CONVERGENT_ATTR, False),
             )
             self.nodes[node.name] = node
             if edge_in == attach_to:

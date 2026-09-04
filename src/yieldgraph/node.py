@@ -123,6 +123,13 @@ class Node(LoggingBehavior):
         Mark this node as the first in its chain, by default ``True``.
     last : bool, optional
         Mark this node as the last in its chain, by default ``False``.
+    convergent : bool, optional
+        When ``True``, the job runs once per :meth:`process` /
+        :meth:`process_streaming` call with the *entire* drained batch
+        of upstream items passed as a single list argument, instead of
+        once per item. Use :func:`~yieldgraph.job.convergent` to mark a
+        job function passed to :meth:`~yieldgraph.graph.Graph.add_chain`
+        this way. By default ``False``.
 
     Attributes
     ----------
@@ -132,6 +139,9 @@ class Node(LoggingBehavior):
         ``True`` for the first node of a chain.
     last : bool
         ``True`` for the last node of a chain.
+    convergent : bool
+        ``True`` if the job runs once for the whole drained batch
+        instead of once per item.
     n_consumed : int
         Number of input items consumed so far in the current run.
     n_produced : int
@@ -178,6 +188,10 @@ class Node(LoggingBehavior):
     last: bool
     """``True`` for the last node of a chain."""
 
+    convergent: bool
+    """``True`` if the job runs once for the whole drained batch of
+    upstream items instead of once per item."""
+
     n_queued: int
     """Total number of input items queued at the start of 
     :meth:`process`."""
@@ -217,12 +231,14 @@ class Node(LoggingBehavior):
             label: str = '',
             first: bool = True,
             last: bool = False,
+            convergent: bool = False,
             ) -> None:
         self._graph = graph
         self._job = Job(job_function, label)
         self.inputs_from = inputs_from
         self.first = first
         self.last = last
+        self.convergent = convergent
         self.reset()
 
     # ------------------------------------------------------------------
@@ -336,6 +352,10 @@ class Node(LoggingBehavior):
         :attr:`_processing_last` flags so the job function can branch on
         position if needed.
 
+        If :attr:`convergent` is ``True``, the entire queue is drained
+        first and :meth:`_run_convergent` is called once with the full
+        list of items instead.
+
         Parameters
         ----------
         edges_in : list[Edge]
@@ -348,10 +368,20 @@ class Node(LoggingBehavior):
         self.outputs = edges_out
         self.n_queued = deepcopy(self.input_count)
         self._job.cancelled = False
-        for job_count in range(1, self.n_queued + 1):
-            self._processing_first = job_count == 1
-            self._processing_last = job_count == self.n_queued
-            self._run_one(self.inputs.popleft())
+        if self.convergent:
+            edge = self.inputs
+            items = list(edge)
+            edge.clear()
+            self.n_consumed = len(items)
+            self._processing_first = True
+            self._processing_last = True
+            self._run_convergent(items)
+            
+        else:
+            for job_count in range(1, self.n_queued + 1):
+                self._processing_first = job_count == 1
+                self._processing_last = job_count == self.n_queued
+                self._run_one(self.inputs.popleft())
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -401,6 +431,45 @@ class Node(LoggingBehavior):
         finally:
             self.n_consumed += 1
 
+    def _run_convergent(self, items: list[tuple[Any, ...]]) -> None:
+        """Run the job once for an entire drained batch of upstream
+        items.
+
+        Unlike :meth:`_run_one`, *items* (the full list of upstream
+        tuples, already collected by :meth:`process` /
+        :meth:`process_streaming`) is passed as a single positional
+        argument rather than unpacked. Each yielded value is normalised
+        to a tuple and pushed to all outgoing edges the same way as
+        :meth:`_run_one`.
+
+        Parameters
+        ----------
+        items : list[tuple[Any, ...]]
+            Every item drained from the input edge(s), in arrival order.
+        """
+        try:
+            if self._graph.cancelled:
+                self.log_trace('Skip job because of graph cancel')
+                return
+
+            for output in self._job(items):
+                if self._graph.cancelled:
+                    self._job.cancelled = True
+                    break
+
+                self._fan_out(_ensure_tuple(output))
+
+        except KeyboardInterrupt as e:
+            self._graph.cancelled = True
+            self.log_info(f'{self} interrupted because: {e}')
+
+        except Exception as e:  # noqa: BLE001
+            self.log_warning(
+                f'Caught error = {e}\nError occurred @ node {self!r}')
+            if ENV.LOG_TRACEBACK:
+                self.log_exception(traceback.format_exc(), e)
+            self.errors.append(e)
+
     def _fan_out(self, output: tuple[Any, ...]) -> None:
         """Push *output* to every outgoing edge and increment 
         :attr:`n_produced`.
@@ -441,6 +510,11 @@ class Node(LoggingBehavior):
         :attr:`_processing_last` is always ``False`` because the end of
         the stream is not known in advance.
 
+        If :attr:`convergent` is ``True``, items are still collected one
+        at a time from each edge as they arrive, but the job is only
+        called once — after every input edge is closed and empty — with
+        the full collected list, via :meth:`_run_convergent`.
+
         Parameters
         ----------
         edges_in : list[Edge]
@@ -460,6 +534,30 @@ class Node(LoggingBehavior):
         self.inputs = edges_in
         self.outputs = edges_out
         self._job.cancelled = False
+
+        if self.convergent:
+            items: list[tuple[Any, ...]] = []
+            for edge in edges_in:
+                while True:
+                    if self._graph.cancelled:
+                        self._job.cancelled = True
+                        return
+
+                    item = edge.get(timeout=0.05)
+
+                    if item is None:
+                        if edge.closed:
+                            break
+                        continue
+
+                    items.append(item)
+                    self.n_consumed += 1
+
+            self._processing_first = True
+            self._processing_last = True
+            self._run_convergent(items)
+            return
+
         first_item = True
 
         for edge in edges_in:
